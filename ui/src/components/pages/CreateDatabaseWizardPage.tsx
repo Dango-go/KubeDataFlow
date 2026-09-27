@@ -872,7 +872,12 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
                       title="Re-downloading a chart with the same name and version will completely overwrite all existing files and reset previous custom changes."
                       className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-white fill-emerald-600" /> Chart Installed
+                      {isExecutingHelmAction ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                      ) : (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-white fill-emerald-600" />
+                      )}
+                      <span>{isExecutingHelmAction ? 'Installing...' : 'Chart Installed'}</span>
                     </button>
                   ) : (
                     <button
@@ -881,7 +886,12 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
                       title="Re-downloading a chart with the same name and version will completely overwrite all existing files and reset previous custom changes."
                       className="bg-brand-blue hover:bg-brand-blue/90 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-md shadow-brand-blue/30 flex items-center gap-1.5 transition-all cursor-pointer"
                     >
-                      <Download className="w-3.5 h-3.5 fill-white" /> Install Chart
+                      {isExecutingHelmAction ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5 fill-white" />
+                      )}
+                      <span>{isExecutingHelmAction ? 'Installing Chart...' : 'Install Chart'}</span>
                     </button>
                   )}
 
@@ -904,75 +914,76 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                <FileCode2 className="w-4 h-4 text-brand-sky" />
-                Helm Chart Editor ({selectedHelmFile || 'values.yaml'})
-              </label>
+            {/* DYNAMICALLY REVEALED HELM CHART EDITOR & TERMINAL ONLY AFTER INSTALL CHART */}
+            {isChartInstalled && (
+              <div className="space-y-4 animate-fadeIn pt-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <FileCode2 className="w-4 h-4 text-brand-sky" />
+                    Helm Chart Editor ({selectedHelmFile || 'values.yaml'})
+                  </label>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* SELECT FILE FROM HELM CHART DROPDOWN */}
-                <div className="flex items-center gap-1.5 bg-bg-main border border-accent-darkBorder rounded-lg px-2.5 py-1">
-                  <FolderTree className="w-3.5 h-3.5 text-brand-sky" />
-                  <select
-                    value={selectedHelmFile || 'values.yaml'}
-                    onChange={(e) => handleSelectHelmFile(e.target.value)}
-                    className="bg-transparent text-slate-200 text-xs font-mono font-semibold focus:outline-none cursor-pointer"
-                  >
-                    <option value="values.yaml" className="bg-bg-card text-brand-sky font-bold">
-                      📄 values.yaml
-                    </option>
-                    {userCustomFiles.map((file) => (
-                      <option key={file.path} value={file.path} className="bg-bg-card text-emerald-400 font-bold">
-                        ⚡ {file.name} (Custom)
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* SELECT FILE FROM HELM CHART DROPDOWN */}
+                    <div className="flex items-center gap-1.5 bg-bg-main border border-accent-darkBorder rounded-lg px-2.5 py-1">
+                      <FolderTree className="w-3.5 h-3.5 text-brand-sky" />
+                      <select
+                        value={selectedHelmFile || 'values.yaml'}
+                        onChange={(e) => handleSelectHelmFile(e.target.value)}
+                        className="bg-transparent text-slate-200 text-xs font-mono font-semibold focus:outline-none cursor-pointer"
+                      >
+                        <option value="values.yaml" className="bg-bg-card text-brand-sky font-bold">
+                          📄 values.yaml
+                        </option>
+                        {userCustomFiles.map((file) => (
+                          <option key={file.path} value={file.path} className="bg-bg-card text-emerald-400 font-bold">
+                            ⚡ {file.name} (Custom)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* ADD CUSTOM FILE BUTTON & SAVE / UPGRADE ACTIONS */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button 
+                        onClick={() => setShowAddCustomFileModal(true)}
+                        className="bg-brand-blue hover:bg-brand-blue/90 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-md"
+                      >
+                        <FilePlus className="w-3.5 h-3.5" /> Add Custom File
+                      </button>
+
+                      <button 
+                        onClick={handleSaveChart}
+                        className="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all shadow-md"
+                      >
+                        <Save className="w-3.5 h-3.5 text-emerald-400" /> Save Chart
+                      </button>
+
+                      <button
+                        onClick={() => handleExecuteHelmAction('upgrade')}
+                        disabled={isExecutingHelmAction}
+                        className="bg-amber-600/20 text-amber-400 hover:bg-amber-600/30 border border-amber-500/30 text-xs font-semibold px-3 py-1 rounded-lg flex items-center gap-1.5 transition-all shadow-md"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isExecutingHelmAction ? 'animate-spin' : ''}`} /> Upgrade Chart
+                      </button>
+
+                      {saveSuccessMsg && (
+                        <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-500/40 flex items-center gap-1 animate-pulse font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Chart saved!
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {/* ADD CUSTOM FILE BUTTON & SAVE / UPGRADE ACTIONS */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <button 
-                    onClick={() => setShowAddCustomFileModal(true)}
-                    className="bg-brand-blue hover:bg-brand-blue/90 text-white font-bold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-md"
-                  >
-                    <FilePlus className="w-3.5 h-3.5" /> Add Custom File
-                  </button>
-
-                  <button 
-                    onClick={handleSaveChart}
-                    className="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all shadow-md"
-                  >
-                    <Save className="w-3.5 h-3.5 text-emerald-400" /> Save Chart
-                  </button>
-
-                  <button
-                    onClick={() => handleExecuteHelmAction('upgrade')}
-                    disabled={isExecutingHelmAction}
-                    className="bg-amber-600/20 text-amber-400 hover:bg-amber-600/30 border border-amber-500/30 text-xs font-semibold px-3 py-1 rounded-lg flex items-center gap-1.5 transition-all shadow-md"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isExecutingHelmAction ? 'animate-spin' : ''}`} /> Upgrade Chart
-                  </button>
-
-                  {saveSuccessMsg && (
-                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-500/40 flex items-center gap-1 animate-pulse font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Chart saved!
-                    </span>
-                  )}
-                </div>
+                <YamlCodeEditor
+                  value={yamlContent}
+                  onChange={setYamlContent}
+                  placeholder="Type or edit YAML configuration values here..."
+                  minHeight="280px"
+                />
               </div>
-            </div>
-
-            <YamlCodeEditor
-              value={yamlContent}
-              onChange={setYamlContent}
-              placeholder={
-                !isChartLoaded
-                  ? "Terminal is empty. Click 'Install Chart' above to pull and inspect Helm chart configuration files..."
-                  : "Type or edit YAML configuration values here..."
-              }
-              minHeight="280px"
-            />
+            )}
           </div>
         )}
 

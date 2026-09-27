@@ -2,6 +2,8 @@ import shutil
 from pathlib import Path
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+from db.models.models import HelmChartDB
 
 from services.helm_deployer.chart_manager import ChartManager
 from services.helm_deployer.validator import HelmValidator
@@ -99,14 +101,13 @@ class HelmService:
     async def apply_release(
         self,
         cluster_name: str,
+        namespace: str,
         release_name: str,
         chart_name: str,
-        api_server_url: Optional[str] = None,
-        ca_cert_data: Optional[str] = None,
-        token: Optional[str] = None,
-        user_name: str = "cluster-admin",
-        namespace: str = "default",
-        target_values_file: Optional[str] = None
+        provider_name: Optional[str] = None,
+        release_version: Optional[str] = "latest",
+        target_values_file: Optional[str] = None,
+        chart_content: Optional[str] = None
     ):
         self.validator.validate_release_name(release_name)
         self.validator.validate_namespace(namespace)
@@ -124,10 +125,11 @@ class HelmService:
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to fetch cluster details from discovery-service: {str(e)}")
 
-        cluster_name = cluster_name or cluster_data.get("cluster_name") or ""
-        api_server_url = api_server_url or cluster_data.get("endpoint") or ""
-        ca_cert_data = ca_cert_data or cluster_data.get("ca_cert") or ""
-        token = token or cluster_data.get("token") or ""
+        cluster_name = cluster_data.get("cluster_name") or cluster_name
+        api_server_url = cluster_data.get("endpoint") or ""
+        ca_cert_data = cluster_data.get("ca_cert") or ""
+        token = cluster_data.get("token") or ""
+        provider_type = provider_name or cluster_data.get("provider_type") or "unknown"
 
         if not token:
             raise HTTPException(
@@ -148,10 +150,10 @@ class HelmService:
             ca_cert_data=ca_cert_data,
             api_server_url=api_server_url,
             token=token,
-            user_name=user_name,
             namespace=namespace
         )
 
+        # install or upgrade chart
         try:
             result = await self.helm_runner.upgrade_install(
                 release_name=release_name,
@@ -161,8 +163,38 @@ class HelmService:
                 values_file=target_values_file,
                 wait=False
             )
-            return result
 
+            # saving to database
+            if self.db_session:
+                request = select(HelmChartDB).where(
+                    HelmChartDB.release_name == release_name,
+                    HelmChartDB.cluster_name == cluster_name
+                )
+                res = await self.db_session.execute(request)
+                chart = res.scalar_one_or_none()
+
+                if chart:
+                    if target_values_file and chart_content:
+                        updated_files = dict(chart.custom_yaml_files or {})
+                        updated_files[target_values_file] = chart_content
+                        chart.custom_yaml_files = updated_files
+                else:
+                    custom_files = {target_values_file: chart_content} if target_values_file and chart_content else {}
+                    new_chart = HelmChartDB(
+                        provider_name=provider_type,
+                        cluster_name=cluster_name,
+                        chart_name=chart_name,
+                        release_name=release_name,
+                        release_version=release_version or "latest",
+                        namespace=namespace,
+                        custom_yaml_files=custom_files
+                    )
+                    self.db_session.add(new_chart)
+
+                await self.db_session.commit()
+
+            return result
+            
         finally:
             if kubeconfig_path.exists():
                 try:
@@ -220,6 +252,17 @@ class HelmService:
             release_dir = self.chart_manager.base_temp_dir / release_name
             if release_dir.exists():
                 shutil.rmtree(release_dir, ignore_errors=True)
+
+            if self.db_session:
+                request = select(HelmChartDB).where(
+                    HelmChartDB.release_name == release_name,
+                    HelmChartDB.cluster_name == cluster_name
+                )
+                res = await self.db_session.execute(request)
+                chart = res.scalar_one_or_none()
+                if chart:
+                    await self.db_session.delete(chart)
+                    await self.db_session.commit()
 
             return uninstalled
         finally:

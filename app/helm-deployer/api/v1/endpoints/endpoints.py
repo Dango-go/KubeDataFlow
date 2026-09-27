@@ -28,7 +28,7 @@ async def pull_chart(
         chart_repo_url=request.chart_repo_url,
         chart_name=request.chart_name,
         chart_version=request.chart_version,
-        release_name=request.release_name
+        release_name=request.release_name,
     )
     return ChartPullResponse(
         release_name=request.release_name,
@@ -123,15 +123,14 @@ async def deploy_chart(
     
     service = HelmService(db_session=db)
     applied = await service.apply_release(
+        provider_name=request.provider_name,
         cluster_name=request.cluster_name,
+        namespace=request.namespace,
         release_name=request.release_name,
         chart_name=request.chart_name,
-        api_server_url=request.api_server_url,
-        ca_cert_data=request.ca_cert_data,
-        token=request.token,
-        user_name=request.user_name,
-        namespace=request.namespace,
-        target_values_file=request.target_values_file
+        release_version=request.release_version,
+        target_values_file=request.target_values_file,
+        chart_content=request.chart_content
     )
 
     return {
