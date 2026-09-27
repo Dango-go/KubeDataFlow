@@ -17,7 +17,7 @@ class ChartManager:
 
         #repo url
         url = repo_url.rstrip("/")
-        chart_url_index_yaml =  f"{url}.index.yaml"
+        chart_url_index_yaml =  f"{url}/index.yaml"
         chart_download_url = None
 
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
@@ -29,6 +29,7 @@ class ChartManager:
                 else:
                     return f"Error {index_resp.status_code} while installing {chart_url_index_yaml}"
         
+                target_entry = None
                 for entry in entries:
                     if chart_version in ["latest", "", None] or entry.get("version") == chart_version:
                         target_entry = entry
@@ -38,6 +39,8 @@ class ChartManager:
                     chart_url = target_entry['urls'][0]
                     if chart_url.startswith("http://") or chart_url.startswith("https://"):
                         chart_download_url = chart_url
+                    else:
+                        chart_download_url = f"{url}/{chart_url.lstrip('/')}"
                     
             except Exception as e:
                 print(f"Failed to parse index.yaml from {chart_url_index_yaml}: {e}")
