@@ -163,6 +163,10 @@ class HelmService:
                     if matches:
                         cand = matches[0]
                 values_file_path = str(cand) if cand.exists() else target_values_file
+            else:
+                root_val = self.chart_manager.base_temp_dir / release_name / "values.yaml"
+                if root_val.exists():
+                    values_file_path = str(root_val)
 
             result = await self.helm_runner.upgrade_install(
                 release_name=release_name,

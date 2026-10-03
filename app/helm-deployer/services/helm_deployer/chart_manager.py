@@ -27,6 +27,20 @@ class ChartManager:
             raise Exception(f"Failed to pull chart: {stderr.decode('utf-8')}")
 
         chart_extracted_path = release_dir / chart_name
+
+        # Auto-patch known deprecated Bitnami image tags that return 404 on Docker Hub
+        for val_path in release_dir.glob("**/values.yaml"):
+            try:
+                txt = val_path.read_text(encoding="utf-8")
+                if "16.3.0-debian-12-r12" in txt:
+                    txt = txt.replace("16.3.0-debian-12-r12", "16")
+                    val_path.write_text(txt, encoding="utf-8")
+                if "0.15.0-debian-11-r0" in txt:
+                    txt = txt.replace("0.15.0-debian-11-r0", "latest")
+                    val_path.write_text(txt, encoding="utf-8")
+            except Exception:
+                pass
+
         if chart_extracted_path.exists():
             return str(chart_extracted_path)
 
@@ -54,6 +68,13 @@ class ChartManager:
             target_file.parent.mkdir(parents=True, exist_ok=True)
 
         target_file.write_text(content, encoding="utf-8")
+
+        # Also overwrite matching file in subdirectories (e.g. postgresql/values.yaml)
+        matches = list((self.base_temp_dir / release_name).glob(f"**/{file_path}"))
+        for m in matches:
+            if m != target_file:
+                m.write_text(content, encoding="utf-8")
+
         return str(target_file)
 
     # LIST ALL FILES IN RELEASE

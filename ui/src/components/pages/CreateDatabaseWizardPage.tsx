@@ -339,6 +339,14 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
           console.warn('Could not auto-fetch pulled chart file:', e);
         }
       } else {
+        const targetFile = selectedHelmFile || 'values.yaml';
+        if (yamlContent && yamlContent.trim()) {
+          try {
+            await apiClient.saveHelmFile(dbName, targetFile, yamlContent);
+          } catch (e) {
+            console.warn('Failed to save file before helm apply:', e);
+          }
+        }
         const curCluster = clustersList.find((cls) => cls.name === selectedCluster || cls.id === selectedCluster);
         await apiClient.applyHelmRelease({
           cluster_name: selectedCluster || 'default-prod',
@@ -348,7 +356,8 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
           ca_cert_data: curCluster?.ca_cert_data,
           token: curCluster?.token,
           user_name: curCluster?.user_name,
-          namespace: 'databases'
+          namespace: 'databases',
+          target_values_file: targetFile
         });
       }
       setHelmActionStatus(
@@ -399,6 +408,16 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
           content: crdManifestContent
         });
       } else {
+        // Save the YAML content to the target file on the backend first
+        const targetFile = selectedHelmFile || 'values.yaml';
+        try {
+          if (yamlContent && yamlContent.trim()) {
+            await apiClient.saveHelmFile(dbName, targetFile, yamlContent);
+          }
+        } catch (saveErr) {
+          console.warn('Auto-save YAML before deploy warning:', saveErr);
+        }
+
         const curCluster = clustersList.find((cls) => cls.name === targetClusterName || cls.id === targetClusterName);
         await apiClient.applyHelmRelease({
           cluster_name: targetClusterName,
@@ -408,7 +427,8 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
           ca_cert_data: curCluster?.ca_cert_data,
           token: curCluster?.token,
           user_name: curCluster?.user_name,
-          namespace: 'databases'
+          namespace: 'databases',
+          target_values_file: targetFile
         });
       }
 
