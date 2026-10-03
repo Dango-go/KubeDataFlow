@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, BarChart2, Cloud, Banknote, Database } from 'lucide-react';
+import { Bell, BarChart2, Cloud, Banknote, Database, BookOpen } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: string;
@@ -10,8 +10,11 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, activeTabTitle }) => 
   // Determine white icon for right button based on active page
   const renderRightPageIcon = () => {
     switch (activeTab) {
+      case 'docs':
+        return <BookOpen className="w-5 h-5 text-white" />;
       case 'cloud':
         return <Cloud className="w-5 h-5 text-white" />;
+      case 'cost':
       case 'finance':
         return <Banknote className="w-5 h-5 text-white" />;
       case 'databases':

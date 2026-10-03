@@ -1,9 +1,9 @@
 from pydantic import BaseModel, Field
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class ProviderRequest(BaseModel):
-    user_id: int = Field(..., description="The ID of the user who owns the credentials.")
+    user_id: Optional[int] = Field(default=1, description="ID user")
     provider_type: str = Field(..., description="The type of provider for the credentials.")
     alias: str = Field(..., description="Credentials name.")
     credentials: Dict [str, Any] = Field(..., description="The credentials data as a dictionary. Will be encrypted before storing in the database.")

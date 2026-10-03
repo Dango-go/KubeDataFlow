@@ -1,0 +1,50 @@
+db-catalog-service/
+├── Dockerfile                    # Multi-stage Docker build
+├── requirements.txt              # FastAPI, SQLAlchemy, asyncpg, Pydantic, Alembic
+├── config.py                     # Налаштування сервісу (Pydantic BaseSettings)
+├── main.py                       # Точка входу FastAPI додатку
+│
+├── api/                          # REST API Шар (Контролери)
+│   ├── dependencies.py           # FastAPI Depends (ін'єкція AsyncSession та CatalogService)
+│   └── v1/
+│       ├── endpoints/
+│       │   ├── catalog.py        # Публічні ендпоінти для UI (GET /catalog, GET /catalog/{type})
+│       │   └── admin.py          # Адмінські ендпоінти (POST /engines, PUT /presets) для розширення меню
+│       └── schemas.py            # Pydantic DTO моделі запитів/відповідей
+│
+├── core/                         # Системні компоненти
+│   ├── database.py               # AsyncSession для SQLAlchemy (PostgreSQL)
+│   └── exceptions.py             # Кастомні виключення (EngineNotFound, VersionNotSupported)
+│
+├── models/                       # База даних Каталогу (SQLAlchemy ORM)
+│   ├── engine.py                 # EngineEntity (типи БД: Postgres, Redis, ClickHouse, Mongo, Vector)
+│   ├── version.py                # VersionEntity (версії БД + посилання на Helm-чарт / CRD)
+│   ├── preset.py                 # PresetEntity (Small/Medium/Large: CPU, RAM, Disk)
+│   └── schema.py                 # ConfigSchemaEntity (JSON Schema параметрів конфігурації)
+│
+├── seeders/                      # Базове заповнення каталогу
+│   └── initial_catalog.py        # Скрипт початкового наповнення базовими БД при старті сервісу
+│
+└── services/                     # 👈 БІЗНЕС-ЛОГІКА КАТАЛОГУ
+    └── catalog_manager/
+        ├── __init__.py           # Публічний експорт модуля
+        ├── service.py            # Головний оркестратор (CatalogService Facade)
+        ├── repository.py         # SQL-запити до БД каталогу (CRUD)
+        ├── preset_manager.py     # Логіка обчислення тарифних планів (Small / Medium / Large)
+        ├── schema_generator.py   # Генерація JSON Schema для динамічних форм у UI
+        └── cache_service.py      # Кешування каталогу в пам'яті (відповідь за 1-2 мс)
+
+
+Resources (Ресурси: CPU, RAM, Disk — наприклад, лінійка Small / Medium / Large)
+
+HA & Replication (Топологія та висока доступність: Standalone чи Primary-Replica)
+
+Storage Classes (Вибір типу дискового сховища під хмару чи кластер)
+
+Backup Policies (Політики автоматичного резервного копіювання, розклад та термін зберігання)
+
+Custom Configs (Кастомні системні параметри тюнінгу бази даних під конкретний пресет)
+
+Network & Ingress / External Access (Налаштування мережевого доступу: внутрішній чи зовнішній із фільтрами)
+
+

@@ -47,9 +47,9 @@ class ApplyRequest(BaseModel):
     cluster_name: str
     release_name: str
     chart_name: str
-    api_server_url: str
-    ca_cert_data: str
-    token: str
+    api_server_url: Optional[str] = None
+    ca_cert_data: Optional[str] = None
+    token: Optional[str] = None
     user_name: str = "cluster-admin"
     namespace: str = "default"
     target_values_file: Optional[str] = None
@@ -67,5 +67,15 @@ class CreateCustomFileRequest(BaseModel):
     release_name: str = Field(..., description="Name of the release")
     file_name: str = Field("custom-values.yaml", description="Name of the new custom YAML file, e.g. custom-values.yaml")
     content: str = Field(..., description="Raw YAML content for the custom file")
+
+
+class UninstallRequest(BaseModel):
+    cluster_name: str
+    release_name: str
+    api_server_url: Optional[str] = None
+    ca_cert_data: Optional[str] = None
+    token: Optional[str] = None
+    user_name: str = "cluster-admin"
+    namespace: str = "default"
 
 

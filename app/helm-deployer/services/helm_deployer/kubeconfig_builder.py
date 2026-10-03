@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 
-class KubeconfBuilder:
+class KubeconfigBuilder:
     def __init__(self, base_dir: str = "/tmp/kubeconfigs"):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -16,19 +16,22 @@ class KubeconfBuilder:
         ca_cert_data: str, 
         api_server_url: str, 
         token: str,
-        user_name: str,
+        user_name: str = "cluster-admin",
         namespace: str = "default"
     ) -> str: 
+        cluster_dict: Dict[str, Any] = {"server": api_server_url}
+        if ca_cert_data and ca_cert_data.strip():
+            cluster_dict["certificate-authority-data"] = ca_cert_data.strip()
+        else:
+            cluster_dict["insecure-skip-tls-verify"] = True
+
         config: Dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "Config",
             "clusters": [
                 {
                     "name": cluster_name,
-                    "cluster": {
-                        "server": api_server_url,
-                        "certificate-authority-data": ca_cert_data
-                    }
+                    "cluster": cluster_dict
                 }
             ],
             "users": [
@@ -53,14 +56,14 @@ class KubeconfBuilder:
         }
         return yaml.dump(config, default_flow_style=False)  # long string of kubeconfig content 
 
-    def fast_creating(
+    async def fast_creating(
         self, 
         cluster_name: str,
         release_name: str,
         ca_cert_data: str, 
         api_server_url: str, 
         token: str,
-        user_name: str,
+        user_name: str = "cluster-admin",
         namespace: str = "default"
         ): 
             # CREATING FILE PATH FOR KUBECONFIG
@@ -68,6 +71,7 @@ class KubeconfBuilder:
 
             # CREATING KUBECONFIG CONTENT
             yaml_content = self.generating_kubeconfig(
+                user_name = user_name,
                 cluster_name = cluster_name,
                 api_server_url =  api_server_url,
                 ca_cert_data = ca_cert_data,

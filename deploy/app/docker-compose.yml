@@ -1,0 +1,181 @@
+version: '3.8'
+
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: idp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: root
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - /mnt/main-data/postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - idp-network
+
+  auth-service:
+    image: ${DOCKERHUB_USERNAME}/auth-service:latest
+    container_name: idp-auth-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+  db-provisioning-service:
+    image: ${DOCKERHUB_USERNAME}/provisioner-service:latest
+    container_name: idp-db-provisioning-service
+    restart: unless-stopped
+    ports:
+      - "8002:8001"
+    depends_on:
+      postgres:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+
+  helm-deployer:
+    image: ${DOCKERHUB_USERNAME}/helm-service:latest
+    container_name: idp-helm-deployer
+    restart: unless-stopped
+    ports:
+      - "8003:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+  cost-management-service:
+    image: ${DOCKERHUB_USERNAME}/cost-service:latest
+    container_name: idp-cost-management-service
+    restart: unless-stopped
+    ports:
+      - "8004:8001"
+    depends_on:
+      postgres:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+  operator-service:
+    image: ${DOCKERHUB_USERNAME}/operator-service:latest
+    container_name: idp-operator-service
+    restart: unless-stopped
+    ports:
+      - "8005:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+  discovery-service:
+    image: ${DOCKERHUB_USERNAME}/discovery-service:latest
+    container_name: idp-discovery-service
+    restart: unless-stopped
+    ports:
+      - "8007:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+
+  db-info-service:
+    image: ${DOCKERHUB_USERNAME}/info-service:latest
+    container_name: idp-db-info-service
+    restart: unless-stopped
+    ports:
+      - "8008:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+
+  provider-service:
+    image: ${DOCKERHUB_USERNAME}/provider-service:latest
+    container_name: idp-provider-service
+    restart: unless-stopped
+    ports:
+      - "8009:8001"
+
+    depends_on:
+      postgres:
+        condition: service_started
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+
+
+  ui:
+    image: ${DOCKERHUB_USERNAME}/ui-service:latest
+    container_name: idp-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  idp-network:
+    driver: bridge
+    name: idp-network

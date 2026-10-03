@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { CATALOG_ITEMS, INITIAL_DEPLOYED_DBS } from '../../services/mockData';
+import React, { useState, useEffect } from 'react';
+import { CATALOG_ITEMS, INITIAL_DEPLOYED_DBS, getEngineMonogram } from '../../services/mockData';
 import { DeployedDatabase, CategoryType } from '../../types';
+import { apiClient } from '../../services/apiClient';
 import { DatabaseManagementCatalogPage } from './DatabaseManagementCatalogPage';
+import { DatabaseEngineOverviewPage } from './DatabaseEngineOverviewPage';
 import { 
   Database, 
   Settings, 
@@ -12,28 +14,100 @@ import {
   ArrowLeft,
   Wrench,
   Layers,
-  Terminal
+  Terminal,
+  RefreshCw
 } from 'lucide-react';
 
 interface DatabasesCatalogPageProps {
   onNavigateCreate: (engineType?: string) => void;
+  onNavigateTab?: (tab: string) => void;
+  onTitleChange?: (title: string | null) => void;
 }
 
-export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({ onNavigateCreate }) => {
+const isCrdResource = (db: DeployedDatabase): boolean => {
+  if (db.deployment_type === 'crd') return true;
+  if (db.deployment_type === 'helm') return false;
+  if (db.engine_type?.toLowerCase() === 'crd') return true;
+  if (db.values_yaml) {
+    const trimmed = db.values_yaml.trim();
+    if (trimmed.startsWith('apiVersion:') || trimmed.includes('\napiVersion:') || trimmed.includes('kind:') || trimmed.startsWith('kind:')) {
+      return true;
+    }
+  }
+  if (
+    db.name.startsWith('secret-') ||
+    db.name.startsWith('crd-') ||
+    db.name.startsWith('cm-') ||
+    db.name.startsWith('configmap-') ||
+    db.name.startsWith('operator-')
+  ) {
+    return true;
+  }
+  return false;
+};
+
+export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({ 
+  onNavigateCreate,
+  onNavigateTab,
+  onTitleChange 
+}) => {
   const [selectedDb, setSelectedDb] = useState<DeployedDatabase | null>(null);
   const [activeDbTab, setActiveDbTab] = useState<'config' | 'monitoring' | 'budget'>('config');
 
-  // Selected item for Management Catalog Page (Fast Management)
-  const [selectedManagementCatalogItem, setSelectedManagementCatalogItem] = useState<any>(null);
+  // Deployed active databases list state & refresh loader
+  const [deployedDbs, setDeployedDbs] = useState<DeployedDatabase[]>(INITIAL_DEPLOYED_DBS);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  const fetchDeployedDbs = async () => {
+    setIsRefreshing(true);
+    try {
+      const data = await apiClient.getDeployedDatabases();
+      if (data && data.length > 0) {
+        setDeployedDbs(data);
+      }
+    } catch (e) {
+      console.warn('Failed to refresh deployed databases:', e);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 400);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeployedDbs();
+  }, []);
+
+  // Selected item for Engine Overview (Catalog Card Click)
+  const [selectedEngineOverviewItem, setSelectedEngineOverviewItem] = useState<any>(null);
+
+  // Selected item for Management Catalog Page (Running DB Instance Click)
+  const [selectedManagementCatalogItem, setSelectedManagementCatalogItem] = useState<any>(null);
+  const [selectedManagementDb, setSelectedManagementDb] = useState<DeployedDatabase | null>(null);
+
+  // Flow A: Click Engine Card in Catalog Grid -> Open Engine Overview Page (Create DB, Active instances of this engine, Docs)
+  const handleOpenCatalogItem = (item: any) => {
+    setSelectedEngineOverviewItem(item);
+    onTitleChange?.(`${item.name} Engine Catalog`);
+  };
+
+  // Flow B: Click Active Running DB in Table -> Open Management Database Console
   const handleOpenFastManagement = (db: DeployedDatabase) => {
-    const found = CATALOG_ITEMS.find((c) => c.engine_type === db.engine_type) || CATALOG_ITEMS[0];
+    const dbEngine = (db.engine_type || '').toLowerCase();
+    const found = CATALOG_ITEMS.find((c) => (c.engine_type || '').toLowerCase() === dbEngine) || CATALOG_ITEMS[0];
     const customItem = {
       ...found,
       name: `${db.name} (${found.name})`,
       engine_type: db.engine_type,
     };
+    setSelectedManagementDb(db);
     setSelectedManagementCatalogItem(customItem);
+    onTitleChange?.('Management Database Console');
+  };
+
+  const handleBackToCatalog = () => {
+    setSelectedEngineOverviewItem(null);
+    setSelectedManagementCatalogItem(null);
+    setSelectedManagementDb(null);
+    onTitleChange?.(null);
   };
 
   // Track image load errors for fallbacks
@@ -54,13 +128,29 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({ onNa
   // Fully ready databases (No "Under Development" badge)
   const readyEngines = ['postgresql', 'mongodb', 'redis'];
 
-  // If a management catalog item is opened, show its page
+  // Render Engine Overview Page if engine card clicked
+  if (selectedEngineOverviewItem) {
+    return (
+      <DatabaseEngineOverviewPage
+        item={selectedEngineOverviewItem}
+        deployedDbs={deployedDbs}
+        onBack={handleBackToCatalog}
+        onNavigateCreate={onNavigateCreate}
+        onOpenManagementConsole={handleOpenFastManagement}
+      />
+    );
+  }
+
+  // Render Running Instance Management Console if running instance clicked
   if (selectedManagementCatalogItem) {
     return (
       <DatabaseManagementCatalogPage
         item={selectedManagementCatalogItem}
-        onBack={() => setSelectedManagementCatalogItem(null)}
+        selectedDb={selectedManagementDb}
+        deployedDbs={deployedDbs}
+        onBack={handleBackToCatalog}
         onNavigateCreate={onNavigateCreate}
+        onNavigateTab={onNavigateTab}
       />
     );
   }
@@ -89,37 +179,18 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({ onNa
               {/* 4 CARDS PER ROW SQUARE GRID */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 {items.map((item) => {
-                  const isUnderDev = !readyEngines.includes(item.engine_type);
-                  const isFailedImage = failedImages[item.id];
+                  const mono = getEngineMonogram(item.engine_type);
                   return (
                     <div
                       key={item.id}
-                      onClick={() => setSelectedManagementCatalogItem(item)}
-                      className="bg-bg-card border border-accent-darkBorder rounded-2xl p-4 hover:border-brand-sky hover:shadow-xl hover:shadow-brand-sky/10 transition-all cursor-pointer group flex flex-col justify-between relative overflow-hidden min-h-[220px]"
+                      onClick={() => handleOpenCatalogItem(item)}
+                      className="bg-bg-card border border-accent-darkBorder rounded-2xl p-4 hover:border-brand-sky hover:shadow-xl hover:shadow-brand-sky/10 transition-all cursor-pointer group flex flex-col justify-between relative overflow-hidden min-h-[200px]"
                     >
-                      {/* TOP-LEFT UNDER DEVELOPMENT BADGE (EXCEPT PG, MONGO, REDIS) */}
-                      {isUnderDev && (
-                        <div className="mb-2 inline-self-start">
-                          <span className="inline-flex items-center gap-1 bg-amber-500/20 text-white border border-amber-500/40 text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider shadow-sm">
-                            <Wrench className="w-2.5 h-2.5 text-amber-400" />
-                            Under Development
-                          </span>
-                        </div>
-                      )}
 
                       <div>
                         <div className="flex items-center justify-between mb-3">
-                          <div className="w-12 h-12 rounded-xl bg-bg-main p-2 flex items-center justify-center group-hover:scale-105 transition-transform border border-accent-darkBorder">
-                            {isFailedImage ? (
-                              <Database className="w-7 h-7 text-brand-sky" />
-                            ) : (
-                              <img 
-                                src={item.icon_url} 
-                                alt={item.name} 
-                                onError={() => handleImageError(item.id)}
-                                className="w-8 h-8 object-contain" 
-                              />
-                            )}
+                          <div className={`w-11 h-11 rounded-xl ${mono.bg} ${mono.border} border flex items-center justify-center font-mono font-black text-sm tracking-wider ${mono.text} ${mono.glow} shadow-md group-hover:scale-105 group-hover:border-brand-sky/60 transition-all`}>
+                            {mono.code}
                           </div>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-bg-main text-slate-300 border border-accent-darkBorder">
                             {item.badge}
@@ -166,18 +237,30 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({ onNa
 
       {/* 2. Deployed Active Databases List Section */}
       <section className="space-y-4 pt-6 border-t border-accent-darkBorder">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-lg font-bold text-white">Active Deployed Database Instances</h3>
             <p className="text-xs text-slate-400">Inspect status, configuration, metrics, and monthly budget for your active instances</p>
           </div>
-          <button
-            onClick={() => onNavigateCreate()}
-            className="bg-brand-blue hover:bg-brand-blue/90 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md shadow-brand-blue/20 flex items-center gap-1.5 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Deploy New Database</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchDeployedDbs}
+              disabled={isRefreshing}
+              className="bg-bg-main hover:bg-accent-darkHover text-slate-200 border border-accent-darkBorder font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-md flex items-center gap-1.5 transition-all"
+              title="Refresh / Update deployed database list from backend"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-brand-sky ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Update List</span>
+            </button>
+
+            <button
+              onClick={() => onNavigateCreate()}
+              className="bg-brand-blue hover:bg-brand-blue/90 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md shadow-brand-blue/20 flex items-center gap-1.5 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Deploy New Database</span>
+            </button>
+          </div>
         </div>
 
         {/* Selected DB Details View or List Table */}
@@ -315,42 +398,56 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({ onNa
                 </tr>
               </thead>
               <tbody className="divide-y divide-accent-darkBorder/60 text-sm">
-                {INITIAL_DEPLOYED_DBS.map((db) => (
-                  <tr 
-                    key={db.id} 
-                    onClick={() => handleOpenFastManagement(db)}
-                    className="hover:bg-accent-darkHover transition-colors cursor-pointer"
-                  >
-                    <td className="p-4 font-bold text-white flex items-center gap-2">
-                      <Database className="w-4 h-4 text-brand-sky" />
-                      <span className="hover:underline text-brand-sky font-bold">{db.name}</span>
-                    </td>
-                    <td className="p-4 text-slate-300 capitalize">
-                      {db.engine_type} <span className="text-xs text-slate-500">v{db.version}</span>
-                    </td>
-                    <td className="p-4 text-slate-400 text-xs font-mono">{db.cluster_name}</td>
-                    <td className="p-4">
-                      <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
-                        ● {db.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-xs text-slate-300">
-                      {db.cpu_usage_m}m CPU / {db.storage_gb}GB SSD
-                    </td>
-                    <td className="p-4 font-extrabold text-white text-right">${db.monthly_cost.toFixed(2)}</td>
-                    <td className="p-4 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenFastManagement(db);
-                        }}
-                        className="text-xs font-bold bg-brand-blue hover:bg-brand-blue/90 text-white px-3.5 py-1.5 rounded-lg transition-all shadow-md shadow-brand-blue/20 flex items-center gap-1.5 mx-auto"
-                      >
-                        <Terminal className="w-3.5 h-3.5 text-white" /> Fast Management
-                      </button>
+                {deployedDbs.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                      No deployed database instances found.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  deployedDbs.map((db) => (
+                    <tr 
+                      key={db.id} 
+                      onClick={() => handleOpenFastManagement(db)}
+                      className="hover:bg-accent-darkHover transition-colors cursor-pointer"
+                    >
+                      <td className="p-4 font-bold text-white flex items-center gap-2">
+                        {isCrdResource(db) ? (
+                          <span className="text-xs font-bold text-brand-sky font-mono uppercase tracking-wider">
+                            crd
+                          </span>
+                        ) : (
+                          <Database className="w-4 h-4 text-brand-sky" />
+                        )}
+                        <span className="hover:underline text-brand-sky font-bold">{db.name}</span>
+                      </td>
+                      <td className="p-4 text-slate-300 capitalize">
+                        {db.engine_type} <span className="text-xs text-slate-500">v{db.version}</span>
+                      </td>
+                      <td className="p-4 text-slate-400 text-xs font-mono">{db.cluster_name}</td>
+                      <td className="p-4">
+                        <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
+                          ● {db.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-xs text-slate-300">
+                        {db.cpu_usage_m}m CPU / {db.storage_gb}GB SSD
+                      </td>
+                      <td className="p-4 font-extrabold text-white text-right">${db.monthly_cost.toFixed(2)}</td>
+                      <td className="p-4 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenFastManagement(db);
+                          }}
+                          className="text-xs font-bold bg-brand-blue hover:bg-brand-blue/90 text-white px-3.5 py-1.5 rounded-lg transition-all shadow-md shadow-brand-blue/20 flex items-center gap-1.5 mx-auto"
+                        >
+                          <Terminal className="w-3.5 h-3.5 text-white" /> Fast Management
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

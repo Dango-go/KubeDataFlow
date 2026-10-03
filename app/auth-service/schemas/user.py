@@ -1,19 +1,16 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 import uuid
-# Schemas for user registration and response
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
-# User response
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     email: EmailStr
     is_active: bool
-
-    class Config:
-        from_attributes = True
 
 class Token(BaseModel):
     access_token: str

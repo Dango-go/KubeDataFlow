@@ -209,143 +209,11 @@ export const CATALOG_ITEMS: DatabaseCatalogItem[] = [
   }
 ];
 
-export const INITIAL_DEPLOYED_DBS: DeployedDatabase[] = [
-  {
-    id: 'db-1',
-    name: 'prod-postgres-main',
-    engine_type: 'postgresql',
-    version: '16',
-    status: 'running',
-    cluster_name: 'lenovo-prod-k8s',
-    namespace: 'databases',
-    cpu_usage_m: 450,
-    memory_usage_mb: 3200,
-    storage_gb: 50,
-    monthly_cost: 64.50,
-    created_at: '2026-08-10 10:15',
-    values_yaml: `primary:\n  extendedConfiguration: |\n    max_connections = 250\n    shared_buffers = 2GB\n  resources:\n    requests:\n      cpu: 1000m\n      memory: 4Gi\n  persistence:\n    size: 50Gi`
-  },
-  {
-    id: 'db-2',
-    name: 'redis-session-cache',
-    engine_type: 'redis',
-    version: '7.2',
-    status: 'running',
-    cluster_name: 'aws-eks-us-east',
-    namespace: 'cache',
-    cpu_usage_m: 120,
-    memory_usage_mb: 1400,
-    storage_gb: 15,
-    monthly_cost: 28.10,
-    created_at: '2026-08-12 14:30',
-    values_yaml: `master:\n  configuration: |\n    maxmemory-policy allkeys-lru\n  resources:\n    requests:\n      cpu: 500m\n      memory: 2Gi\n  persistence:\n    size: 15Gi`
-  },
-  {
-    id: 'db-3',
-    name: 'clickhouse-analytics-v1',
-    engine_type: 'clickhouse',
-    version: '24.1',
-    status: 'running',
-    cluster_name: 'lenovo-prod-k8s',
-    namespace: 'analytics',
-    cpu_usage_m: 1850,
-    memory_usage_mb: 7800,
-    storage_gb: 250,
-    monthly_cost: 182.00,
-    created_at: '2026-08-14 09:00',
-    values_yaml: `clickhouse:\n  profiles:\n    default/max_threads: "8"\n  resources:\n    requests:\n      cpu: 4000m\n      memory: 16Gi\n  persistence:\n    size: 250Gi`
-  }
-];
+export const INITIAL_DEPLOYED_DBS: DeployedDatabase[] = [];
 
-export const CLOUD_CREDENTIALS: CloudCredential[] = [
-  {
-    id: 'cred-1',
-    name: 'AWS Primary Production Account',
-    provider: 'aws',
-    account_id: 'AKIAIOSFODNN7EXAMPLE',
-    created_at: '2026-08-01',
-    status: 'active',
-    aws_access_key_id: 'AKIAIOSFODNN7EXAMPLE',
-    aws_secret_access_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
-  },
-  {
-    id: 'cred-2',
-    name: 'Azure Enterprise Production Tenant',
-    provider: 'azure',
-    account_id: '72f988bf-86f1-41af-91ab-2d7cd011db47',
-    created_at: '2026-08-03',
-    status: 'active',
-    azure_tenant_id: '72f988bf-86f1-41af-91ab-2d7cd011db47',
-    azure_client_id: 'e2b34a12-8921-4a1b-9f12-321049210214',
-    azure_client_secret: 'secret_azure_token_sample',
-    azure_subscription_id: 'sub_9012384910239102'
-  },
-  {
-    id: 'cred-3',
-    name: 'DigitalOcean Kubernetes Token',
-    provider: 'digitalocean',
-    account_id: 'do_pat_81923891029102938102',
-    created_at: '2026-08-05',
-    status: 'active',
-    do_personal_access_token: 'dop_v1_819238910291029381023910239'
-  },
-  {
-    id: 'cred-4',
-    name: 'GCP Analytics Cloud Project',
-    provider: 'gcp',
-    account_id: 'gcp-db-idp-prod-2026',
-    created_at: '2026-08-11',
-    status: 'active'
-  }
-];
+export const CLOUD_CREDENTIALS: CloudCredential[] = [];
 
-export const K8S_CLUSTERS: K8sCluster[] = [
-  {
-    id: 'cls-1',
-    name: 'onprem-prod-k8s',
-    provider: 'On-Premise',
-    region: 'EU-Central (Local)',
-    nodes_count: 5,
-    status: 'active',
-    api_url: 'https://192.168.1.50:6443'
-  },
-  {
-    id: 'cls-2',
-    name: 'aws-eks-us-east',
-    provider: 'AWS EKS',
-    region: 'us-east-1 (N. Virginia)',
-    nodes_count: 8,
-    status: 'active',
-    api_url: 'https://eks.us-east-1.amazonaws.com'
-  },
-  {
-    id: 'cls-3',
-    name: 'azure-aks-prod',
-    provider: 'Azure AKS',
-    region: 'westeurope (Amsterdam)',
-    nodes_count: 4,
-    status: 'active',
-    api_url: 'https://aks.westeurope.azure.com'
-  },
-  {
-    id: 'cls-4',
-    name: 'doks-staging-cluster',
-    provider: 'DigitalOcean',
-    region: 'AMS3 (Amsterdam)',
-    nodes_count: 3,
-    status: 'active',
-    api_url: 'https://doks.digitalocean.com'
-  },
-  {
-    id: 'cls-5',
-    name: 'gcp-gke-prod-cluster',
-    provider: 'GCP GKE',
-    region: 'us-central1 (Iowa)',
-    nodes_count: 6,
-    status: 'active',
-    api_url: 'https://container.googleapis.com'
-  }
-];
+export const K8S_CLUSTERS: K8sCluster[] = [];
 
 export const METRICS_SAMPLE: DatabaseMetrics = {
   db_id: 'db-1',
@@ -356,4 +224,46 @@ export const METRICS_SAMPLE: DatabaseMetrics = {
   qps: [850, 920, 1100, 2400, 1800, 1400, 1950, 2200, 1750, 1300, 1050, 980],
   cache_hit_ratio: [98.2, 98.5, 97.9, 99.1, 98.8, 98.4, 99.0, 98.7, 98.9, 99.2, 98.6, 98.9],
   slow_queries_duration: [12, 8, 45, 120, 85, 30, 60, 95, 40, 15, 10, 5]
+};
+
+export interface EngineMonogram {
+  code: string;
+  bg: string;
+  text: string;
+  border: string;
+  glow: string;
+}
+
+export const getEngineMonogram = (engineType: string = ''): EngineMonogram => {
+  const normalized = (engineType || '').toLowerCase().trim();
+  const dict: Record<string, EngineMonogram> = {
+    postgresql: { code: 'PG', bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30', glow: 'shadow-sky-500/10' },
+    postgres:   { code: 'PG', bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30', glow: 'shadow-sky-500/10' },
+    mysql:      { code: 'MY', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30', glow: 'shadow-amber-500/10' },
+    mariadb:    { code: 'MA', bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/30', glow: 'shadow-teal-500/10' },
+    cockroach:  { code: 'CR', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30', glow: 'shadow-emerald-500/10' },
+    mongodb:    { code: 'MG', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30', glow: 'shadow-emerald-500/10' },
+    mongo:      { code: 'MG', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30', glow: 'shadow-emerald-500/10' },
+    cassandra:  { code: 'CS', bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30', glow: 'shadow-blue-500/10' },
+    couchbase:  { code: 'CB', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30', glow: 'shadow-rose-500/10' },
+    scylladb:   { code: 'SC', bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30', glow: 'shadow-cyan-500/10' },
+    scylla:     { code: 'SC', bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30', glow: 'shadow-cyan-500/10' },
+    qdrant:     { code: 'QD', bg: 'bg-pink-500/10', text: 'text-pink-400', border: 'border-pink-500/30', glow: 'shadow-pink-500/10' },
+    milvus:     { code: 'MV', bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/30', glow: 'shadow-indigo-500/10' },
+    chroma:     { code: 'CH', bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30', glow: 'shadow-purple-500/10' },
+    weaviate:   { code: 'WV', bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/30', glow: 'shadow-teal-500/10' },
+    redis:      { code: 'RD', bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30', glow: 'shadow-red-500/10' },
+    keydb:      { code: 'KD', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30', glow: 'shadow-amber-500/10' },
+    dragonfly:  { code: 'DF', bg: 'bg-fuchsia-500/10', text: 'text-fuchsia-400', border: 'border-fuchsia-500/30', glow: 'shadow-fuchsia-500/10' },
+    clickhouse: { code: 'CK', bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30', glow: 'shadow-yellow-500/10' },
+    influxdb:   { code: 'IF', bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30', glow: 'shadow-purple-500/10' },
+    influx:     { code: 'IF', bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30', glow: 'shadow-purple-500/10' },
+    timescaledb:{ code: 'TS', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30', glow: 'shadow-amber-500/10' },
+    timescale:  { code: 'TS', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30', glow: 'shadow-amber-500/10' },
+    questdb:    { code: 'QT', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30', glow: 'shadow-rose-500/10' },
+  };
+
+  if (dict[normalized]) return dict[normalized];
+  const code = normalized.slice(0, 2).toUpperCase() || 'DB';
+  return { code, bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30', glow: 'shadow-sky-500/10' };
 };

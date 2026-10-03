@@ -26,6 +26,7 @@ export interface DeployedDatabase {
   monthly_cost: number;
   created_at: string;
   values_yaml: string;
+  deployment_type?: 'crd' | 'helm' | string;
 }
 
 export interface CloudCredential {
@@ -50,10 +51,14 @@ export interface K8sCluster {
   id: string;
   name: string;
   provider: 'AWS EKS' | 'Azure AKS' | 'GCP GKE' | 'DigitalOcean' | 'On-Premise';
+  provider_alias?: string;
   region: string;
   nodes_count: number;
   status: 'active' | 'degraded';
   api_url: string;
+  ca_cert_data?: string;
+  token?: string;
+  user_name?: string;
 }
 
 export interface DatabaseMetrics {

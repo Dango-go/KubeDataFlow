@@ -9,8 +9,10 @@ import {
   Layers,
   HardDrive,
   Gauge,
-  Bell
+  Bell,
+  BookOpen
 } from 'lucide-react';
+import { KubeDataFlowLogo } from '../common/KubeDataFlowLogo';
 
 interface SidebarProps {
   activeTab: string;
@@ -21,13 +23,14 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout }) => {
   const menuItems = [
     { id: 'create', label: 'Create Database', icon: PlusCircle, highlight: true },
-    { id: 'databases', label: 'Databases', icon: Database },
+    { id: 'databases', label: 'Database Management', icon: Database },
     { id: 'store_backups', label: 'Store and Backups', icon: HardDrive },
     { id: 'quotas', label: 'Resource Quotas', icon: Gauge },
     { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'finance', label: 'Finance', icon: DollarSign },
+    { id: 'cost', label: 'Cost', icon: DollarSign },
     { id: 'monitoring', label: 'Monitoring', icon: Activity },
     { id: 'cloud', label: 'Cloud', icon: Cloud },
+    { id: 'docs', label: 'Docs', icon: BookOpen },
   ];
 
   return (
@@ -35,11 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLog
       <div>
         {/* Header / Logo */}
         <div className="p-6 border-b border-accent-darkBorder flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-blue via-brand-sky to-brand-cyan flex items-center justify-center text-white shadow-lg shadow-brand-blue/30">
-            <Layers className="w-6 h-6" />
-          </div>
+          <KubeDataFlowLogo className="w-10 h-10" />
           <div>
-            <h1 className="font-extrabold text-xl text-white tracking-tight leading-none">Data Basik</h1>
+            <h1 className="font-extrabold text-xl text-white tracking-tight leading-none">KubeDataFlow</h1>
           </div>
         </div>
 
@@ -72,26 +73,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLog
       </div>
 
       {/* Footer Profile & Logout */}
-      <div className="p-4 border-t border-accent-darkBorder bg-bg-main">
-        <div className="flex items-center justify-between p-2 rounded-xl">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-brand-blue text-white flex items-center justify-center font-bold text-sm shadow-md">
-              DB
-            </div>
-            <div className="text-left overflow-hidden">
-              <p className="text-sm font-bold text-slate-200 truncate">bodya@databasik.io</p>
-              <p className="text-xs text-slate-500">Administrator</p>
+      {(() => {
+        const userEmail = localStorage.getItem('user_email') || 'user@idp.platform';
+        const initials = userEmail.substring(0, 2).toUpperCase();
+        return (
+          <div className="p-4 border-t border-accent-darkBorder bg-bg-main">
+            <div className="flex items-center justify-between p-2 rounded-xl">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="w-9 h-9 rounded-full bg-brand-blue text-white flex items-center justify-center font-bold text-xs shadow-md shrink-0">
+                  {initials}
+                </div>
+                <div className="text-left overflow-hidden min-w-0">
+                  <p className="text-xs font-bold text-slate-200 truncate" title={userEmail}>
+                    {userEmail}
+                  </p>
+                  <p className="text-[11px] text-slate-500">Administrator</p>
+                </div>
+              </div>
+              <button
+                onClick={onLogout}
+                title="Sign Out"
+                className="text-slate-400 hover:text-rose-400 p-2 rounded-lg hover:bg-rose-950/30 transition-colors shrink-0"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
-          <button
-            onClick={onLogout}
-            title="Sign Out"
-            className="text-slate-400 hover:text-rose-400 p-2 rounded-lg hover:bg-rose-950/30 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+        );
+      })()}
     </aside>
   );
 };

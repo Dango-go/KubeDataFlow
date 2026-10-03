@@ -19,11 +19,23 @@ ui/.vite/
 *.env
 .env.local
 *.tfstate
-*.tfstate.backup
-*.txt
-docs.txt    
+*.tfstate.backup  
 
 
 .idea/
 .vscode/
 .DS_Store
+
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+
+docs.md
+endpoints.md
+*.md
+*.png
+

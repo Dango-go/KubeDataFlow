@@ -5,6 +5,8 @@ from typing import Dict, Any, Union
 
 class Validator:
 
+    K8S_NAME_REGEX = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+
     @classmethod
     def validate_name(cls, name: str) -> str:
         if not name or len(name) > 63:
@@ -37,7 +39,6 @@ class Validator:
             raise ValueError(f"Invalid content type")
         
         required_fields = ["apiVersion", "kind", "spec"]
-        mising = [field for field in required_fileds if field not in pasrsing_content]
+        missing = [field for field in required_fields if field not in parsing_content]
         if missing:
-            raise
-        ValueError(f"CRD manifest is missing required Kubernetes top-level fields: {', '.join(missing)}")
+            raise ValueError(f"CRD manifest is missing required Kubernetes top-level fields: {', '.join(missing)}")

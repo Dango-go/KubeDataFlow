@@ -31,6 +31,6 @@ app.include_router(catalog_router)
 app.include_router(admin_router)
 
 
-@app.get("/healthz", tags=["health"])
-async def healthz():
-    return {"status": "ok", "service": "db-catalog-service"}
+@app.get("/health")
+def root():
+    return {"status": "success"}

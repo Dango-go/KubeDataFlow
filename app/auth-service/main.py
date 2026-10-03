@@ -1,13 +1,32 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from auth.api.v1.endpoints import auth
+from api.v1.endpoints.auth import router 
+from core.db import engine
+from models.user import Base
 
-app = FastAPI(title="Auth Microservice", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
 
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="Auth Microservice", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(router, prefix="/api/v1/auth", tags=["auth"])
 
 @app.get("/health")
-async def health_check():
-    return {"status": "ok"}
+def root():
+    return {"status": "success"}
 
 @app.get("/ready")
 async def ready_check():

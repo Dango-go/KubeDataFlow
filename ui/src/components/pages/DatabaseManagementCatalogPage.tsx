@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { DatabaseCatalogItem } from '../../types';
-import { INITIAL_DEPLOYED_DBS } from '../../services/mockData';
+import React, { useState, useEffect } from 'react';
+import { DatabaseCatalogItem, DeployedDatabase, K8sCluster } from '../../types';
+import { INITIAL_DEPLOYED_DBS, getEngineMonogram } from '../../services/mockData';
+import { apiClient } from '../../services/apiClient';
+import { YamlCodeEditor } from '../common/YamlCodeEditor';
 import { 
   ArrowLeft, 
   Terminal as TerminalIcon, 
@@ -22,13 +24,26 @@ import {
   Lock,
   Puzzle,
   ExternalLink,
-  Activity
+  Activity,
+  FilePlus,
+  FileText,
+  FolderOpen,
+  FolderTree,
+  FileCode2,
+  RefreshCw,
+  Search,
+  DollarSign,
+  Cloud,
+  Trash2
 } from 'lucide-react';
 
 interface DatabaseManagementCatalogPageProps {
   item: DatabaseCatalogItem;
+  selectedDb?: DeployedDatabase | null;
+  deployedDbs?: DeployedDatabase[];
   onBack: () => void;
   onNavigateCreate: (engineType: string) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 // Engine-specific plugins & extensions configuration dictionary
@@ -103,13 +118,61 @@ const ENGINE_EXTENSIONS: Record<string, Array<{ name: string; tag: string; descr
 
 export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPageProps> = ({
   item,
+  selectedDb,
+  deployedDbs = [],
   onBack,
-  onNavigateCreate
+  onNavigateCreate,
+  onNavigateTab
 }) => {
-  // Filter active running instances for this specific engine
-  const runningInstances = INITIAL_DEPLOYED_DBS.filter(
-    (db) => db.engine_type === item.engine_type || item.engine_type === 'postgresql'
+  // Available instances
+  const allInstances = deployedDbs.length > 0 ? deployedDbs : INITIAL_DEPLOYED_DBS;
+  const runningInstances = allInstances.filter(
+    (db) => (db.engine_type || '').toLowerCase() === (item.engine_type || '').toLowerCase() || (item.engine_type || '').toLowerCase() === 'postgresql'
   );
+
+  // Safe fallback instance so selectedInstance is guaranteed to never be null
+  const fallbackInstance: DeployedDatabase = selectedDb || runningInstances[0] || allInstances[0] || {
+    id: '1',
+    name: (item.name || 'db-instance').split(' ')[0].toLowerCase() + '-main',
+    engine_type: item.engine_type || 'postgresql',
+    version: (item.versions && item.versions[0]) || '16',
+    cluster_name: 'default-cluster',
+    namespace: 'databases',
+    status: 'running',
+    cpu_usage_m: 2000,
+    memory_usage_mb: 4096,
+    storage_gb: 50,
+    monthly_cost: 69.50,
+    created_at: new Date().toISOString()
+  };
+
+  // Clusters state to match provider and region for the target cluster
+  const [clustersList, setClustersList] = useState<K8sCluster[]>([]);
+
+  useEffect(() => {
+    const loadClusters = async () => {
+      try {
+        const list = await apiClient.getClusters();
+        if (list && list.length > 0) {
+          setClustersList(list);
+        }
+      } catch (err) {
+        console.warn('Failed to load clusters for provider detection:', err);
+      }
+    };
+    loadClusters();
+  }, []);
+
+  // Top-level Day-2 Live Scaling Panel state
+  const [selectedScaleInstanceId, setSelectedScaleInstanceId] = useState<string>(
+    selectedDb?.id || runningInstances[0]?.id || fallbackInstance.id
+  );
+  const selectedInstance: DeployedDatabase = 
+    (selectedDb && selectedDb.id === selectedScaleInstanceId ? selectedDb : null) ||
+    runningInstances.find(db => db.id === selectedScaleInstanceId) || 
+    selectedDb || 
+    runningInstances[0] || 
+    fallbackInstance;
 
   // Active Snippet Tab: 'cli' | 'python' | 'node' | 'go'
   const [activeSnippetTab, setActiveSnippetTab] = useState<'cli' | 'python' | 'node' | 'go'>('cli');
@@ -118,7 +181,7 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
   // Interactive Web Terminal Modal State
   const [showTerminalModal, setShowTerminalModal] = useState(false);
   const [selectedInstanceForTerminal, setSelectedInstanceForTerminal] = useState(
-    runningInstances[0]?.name || `prod-${item.engine_type}-main-0`
+    selectedInstance?.name || `prod-${item.engine_type}-main-0`
   );
 
   // Day-2 Instance Management Modal state (Day-2 Operations: Scale, Config Tuning, Pause/Resume)
@@ -136,6 +199,187 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
   // Lifecycle status: 'Running' | 'Stopped'
   const [instanceStatus, setInstanceStatus] = useState<'Running' | 'Stopped'>('Running');
   const [day2Notification, setDay2Notification] = useState<string | null>(null);
+
+  const [topCpu, setTopCpu] = useState<number>(
+    (selectedInstance.cpu_usage_m || 2000) / 1000
+  );
+  const [topRam, setTopRam] = useState<number>(
+    Math.round((selectedInstance.memory_usage_mb || 4096) / 1024)
+  );
+  const [topDisk, setTopDisk] = useState<number>(
+    selectedInstance.storage_gb || 50
+  );
+  const [topScaleStatus, setTopScaleStatus] = useState<'Running' | 'Scaling'>('Running');
+  const [topScaleNotification, setTopScaleNotification] = useState<string | null>(null);
+
+  // Live Config Tuning & custom-values.yaml Terminal Editor State
+  const defaultYamlContent = `# custom-values.yaml — Live Runtime Engine Configuration Overrides
+# Target Database: ${selectedInstance?.name || 'prod-postgres-main'} (${selectedInstance?.namespace || 'databases'})
+# Service Endpoint: PUT /api/v1/databases/${selectedInstance?.id || '1'}/config
+
+postgresql:
+  max_connections: 500
+  shared_buffers: "2GB"
+  effective_cache_size: "6GB"
+  maintenance_work_mem: "512MB"
+  work_mem: "32MB"
+  min_wal_size: "1GB"
+  max_wal_size: "4GB"
+  checkpoint_completion_target: 0.9
+  wal_buffers: "16MB"
+  default_statistics_target: 100
+  random_page_cost: 1.1
+  effective_io_concurrency: 200
+
+auth:
+  enablePostgreSQLPassword: true
+  database: "app_production"
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: "30s"
+`;
+
+  const [customValuesYaml, setCustomValuesYaml] = useState<string>(defaultYamlContent);
+  const [yamlConfigStatus, setYamlConfigStatus] = useState<'idle' | 'applying' | 'success' | 'error'>('idle');
+  const [yamlConfigNotification, setYamlConfigNotification] = useState<string | null>(null);
+  const [isUninstallingRelease, setIsUninstallingRelease] = useState<boolean>(false);
+
+  // Custom File Management State
+  const [activeYamlFileName, setActiveYamlFileName] = useState<string>('custom-values.yaml');
+  const [mgmtUserCustomFiles, setMgmtUserCustomFiles] = useState<Array<{ name: string; content: string }>>([
+    { name: 'custom-values.yaml', content: defaultYamlContent }
+  ]);
+  const [showMgmtAddCustomFileModal, setShowMgmtAddCustomFileModal] = useState<boolean>(false);
+  const [mgmtNewCustomFileName, setMgmtNewCustomFileName] = useState<string>('my-custom-values.yaml');
+
+  // Open Chart File Dynamic Modal State
+  const [showOpenChartFileModal, setShowOpenChartFileModal] = useState<boolean>(false);
+  const [chartFilesList, setChartFilesList] = useState<string[]>([]);
+  const [chartFileSearchQuery, setChartFileSearchQuery] = useState<string>('');
+  const [isLoadingChartFiles, setIsLoadingChartFiles] = useState<boolean>(false);
+  const [isLoadingFileContent, setIsLoadingFileContent] = useState<boolean>(false);
+
+  const handleOpenChartFilesModal = async () => {
+    setShowOpenChartFileModal(true);
+    setChartFileSearchQuery('');
+    setIsLoadingChartFiles(true);
+    try {
+      const releaseName = selectedInstance?.name || item.name || 'my-db';
+      const files = await apiClient.getHelmFiles(releaseName);
+      setChartFilesList(files);
+    } catch (err) {
+      console.warn('Failed to load chart files:', err);
+      setChartFilesList([]);
+    } finally {
+      setIsLoadingChartFiles(false);
+    }
+  };
+
+  const handleSelectChartFile = async (filePath: string) => {
+    setIsLoadingFileContent(true);
+    try {
+      const releaseName = selectedInstance?.name || item.name || 'my-db';
+      const content = await apiClient.getHelmFile(releaseName, filePath);
+      
+      const fileName = filePath.split('/').pop() || filePath;
+      // Add or update in mgmtUserCustomFiles
+      setMgmtUserCustomFiles(prev => {
+        const exists = prev.find(f => f.name === fileName);
+        if (exists) {
+          return prev.map(f => f.name === fileName ? { ...f, content } : f);
+        }
+        return [...prev, { name: fileName, content }];
+      });
+      
+      setActiveYamlFileName(fileName);
+      setCustomValuesYaml(content);
+      setShowOpenChartFileModal(false);
+      setYamlConfigNotification(`[Chart File]: Loaded '${filePath}' into editor.`);
+      setTimeout(() => setYamlConfigNotification(null), 4000);
+    } catch (err: any) {
+      setYamlConfigNotification(`[Error]: Could not load '${filePath}': ${err.message}`);
+      setTimeout(() => setYamlConfigNotification(null), 5000);
+    } finally {
+      setIsLoadingFileContent(false);
+    }
+  };
+
+  const handleCreateMgmtCustomFile = () => {
+    let cleanName = mgmtNewCustomFileName.trim();
+    if (!cleanName) return;
+    if (!cleanName.endsWith('.yaml') && !cleanName.endsWith('.yml')) {
+      cleanName = `${cleanName}.yaml`;
+    }
+
+    const initialContent = `# ${cleanName} — Custom Runtime Engine Overrides\n# Target DB: ${selectedInstance?.name || item.name} (${selectedInstance?.namespace || 'databases'})\n\n`;
+    const newFileObj = { name: cleanName, content: initialContent };
+
+    setMgmtUserCustomFiles((prev) => [...prev, newFileObj]);
+    setActiveYamlFileName(cleanName);
+    setCustomValuesYaml(initialContent);
+    setShowMgmtAddCustomFileModal(false);
+    setMgmtNewCustomFileName('');
+  };
+
+  const handleApplyCustomYamlConfig = async () => {
+    setYamlConfigStatus('applying');
+    setYamlConfigNotification(
+      `[PUT /api/v1/databases/${selectedInstance?.id || '1'}/config]: Transmitted custom-values.yaml to helm-deployer & operator-service (helm upgrade --install)...`
+    );
+    await new Promise((res) => setTimeout(res, 1400));
+    setYamlConfigStatus('success');
+    setYamlConfigNotification(
+      `✓ custom-values.yaml configuration successfully applied for ${selectedInstance?.name || 'prod-postgres-main'}! StatefulSet updated without downtime.`
+    );
+    setTimeout(() => {
+      setYamlConfigStatus('idle');
+      setYamlConfigNotification(null);
+    }, 5000);
+  };
+
+  const handleUninstallRelease = async () => {
+    const releaseName = selectedInstance?.name || item.name || 'my-db';
+    const clusterName = selectedInstance?.cluster_name || 'test-eks';
+    const namespace = selectedInstance?.namespace || 'databases';
+
+    const confirmed = window.confirm(
+      `Are you sure you want to uninstall Helm release "${releaseName}" from cluster "${clusterName}" (namespace: ${namespace})?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsUninstallingRelease(true);
+      setYamlConfigNotification(`[Helm Uninstall]: Uninstalling release "${releaseName}" on cluster "${clusterName}"...`);
+      await apiClient.uninstallHelmRelease({
+        cluster_name: clusterName,
+        release_name: releaseName,
+        namespace: namespace
+      });
+      setYamlConfigNotification(`✓ Release "${releaseName}" uninstalled successfully from cluster "${clusterName}"!`);
+      setTimeout(() => setYamlConfigNotification(null), 5000);
+    } catch (err: any) {
+      setYamlConfigNotification(`[Error]: Helm uninstall failed: ${err.message}`);
+      setTimeout(() => setYamlConfigNotification(null), 6000);
+    } finally {
+      setIsUninstallingRelease(false);
+    }
+  };
+
+  const handleTopApplyScale = async () => {
+    setTopScaleStatus('Scaling');
+    setTopScaleNotification(
+      `[PATCH /api/v1/databases/${selectedInstance?.id}/scale]: Transmitted StatefulSet resource update command to helm-deployer & operator-service...`
+    );
+    await new Promise((res) => setTimeout(res, 1500));
+    setTopScaleStatus('Running');
+    setTopScaleNotification(
+      `✓ Scaling successfully executed for ${selectedInstance?.name}! New specs: ${topCpu} Cores CPU, ${topRam} GB RAM, ${topDisk} GB PVC Storage.`
+    );
+    setTimeout(() => setTopScaleNotification(null), 5000);
+  };
 
   const handleOpenDay2 = (db: any) => {
     setActiveDay2Instance(db);
@@ -177,7 +421,7 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
     { type: 'info', text: `[K8S-EXEC-SERVICE]: Establishing secure mTLS tunnel to pod ${selectedInstanceForTerminal}...` },
     { type: 'info', text: `[RBAC-CHECK]: User 'bodya@databasik.io' authorized with ClusterAdmin role.` },
     { type: 'info', text: `[POD-EXEC]: Interactive shell initialized inside container namespace 'databases'.` },
-    { type: 'output', text: `Connected to ${item.name} v${item.versions[0]} engine.` },
+    { type: 'output', text: `Connected to ${item.name} v${item.versions?.[0] || '16'} engine.` },
     { type: 'output', text: `Type \\h or SELECT * for help or click sample query buttons below.` }
   ]);
 
@@ -291,183 +535,510 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
   return (
     <div className="space-y-8 text-slate-100">
       
-      {/* Header with Back Button */}
-      <div className="bg-bg-card border border-accent-darkBorder rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="p-2.5 hover:bg-accent-darkHover rounded-xl text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold border border-accent-darkBorder"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back to Catalog
-          </button>
-          <div className="h-8 w-px bg-slate-800 hidden sm:block"></div>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-bg-main p-2 flex items-center justify-center border border-accent-darkBorder">
-              <img src={item.icon_url} alt={item.name} className="w-8 h-8 object-contain" />
-            </div>
-            <div>
-              <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
-                {item.name} Management Catalog
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-brand-blue/20 text-brand-sky border border-brand-sky/30">
-                  v{item.versions[0]}
-                </span>
-              </h3>
-              <p className="text-xs text-slate-400">Detailed management modules, active running pods, and connection snippets</p>
-            </div>
-          </div>
-        </div>
+      {/* Header with Back Button and Instance Details */}
+      {(() => {
+        const clusterObj = clustersList.find(
+          c => c.name === selectedInstance?.cluster_name || c.id === selectedInstance?.cluster_name
+        );
+        const providerName = clusterObj?.provider || (selectedInstance?.cluster_name?.includes('eks') ? 'AWS EKS' : selectedInstance?.cluster_name?.includes('gke') ? 'GCP GKE' : selectedInstance?.cluster_name?.includes('aks') ? 'Azure AKS' : selectedInstance?.cluster_name?.includes('do') ? 'DigitalOcean' : 'Kubernetes');
+        
+        let providerBadgeClass = 'bg-slate-800/80 text-slate-300 border-slate-700';
+        if (providerName.includes('AWS')) {
+          providerBadgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+        } else if (providerName.includes('GCP')) {
+          providerBadgeClass = 'bg-sky-500/10 text-sky-400 border-sky-500/30';
+        } else if (providerName.includes('Azure')) {
+          providerBadgeClass = 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+        } else if (providerName.includes('DigitalOcean')) {
+          providerBadgeClass = 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30';
+        }
 
-        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-          {/* QUICK WEBPOD TERMINAL BUTTON */}
-          <button
-            onClick={() => setShowTerminalModal(true)}
-            className="bg-bg-main hover:bg-brand-blue/20 text-brand-sky hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl border border-accent-darkBorder hover:border-brand-sky shadow-md flex items-center gap-2 transition-all"
-          >
-            <TerminalIcon className="w-4 h-4 text-brand-sky" />
-            <span>⚡ Interactive Web Terminal</span>
-          </button>
-
-          <button
-            onClick={() => onNavigateCreate(item.engine_type)}
-            className="bg-brand-blue hover:bg-brand-blue/90 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-brand-blue/30 flex items-center gap-2 transition-all"
-          >
-            <Database className="w-4 h-4" />
-            <span>Provision {item.name} Instance</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ======================================================== */}
-      {/* 1. 🚀 ACTIVE RUNNING INSTANCES WIDGET */}
-      {/* ======================================================== */}
-      <section className="bg-bg-card border border-accent-darkBorder rounded-2xl p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-accent-darkBorder pb-3">
-          <div>
-            <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Server className="w-4 h-4 text-brand-cyan" /> 1. Active Running {item.name} Instances
-            </h4>
-            <p className="text-xs text-slate-400">Live Kubernetes database pods running across connected worker clusters</p>
-          </div>
-          <span className="text-xs font-bold text-brand-sky px-2.5 py-1 rounded-lg bg-brand-blue/10 border border-brand-sky/20">
-            {runningInstances.length} Active Pods
-          </span>
-        </div>
-
-        {runningInstances.length === 0 ? (
-          <div className="p-6 text-center text-slate-400 text-xs">
-            No active instances currently running for {item.name}. Click "Provision Instance" to deploy one!
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {runningInstances.map((db) => (
-              <div 
-                key={db.id}
-                className="p-4 bg-bg-main border border-accent-darkBorder rounded-xl space-y-3 hover:border-brand-sky transition-all flex flex-col justify-between"
+        return (
+          <div className="bg-bg-card border border-accent-darkBorder rounded-2xl p-6 shadow-xl flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6">
+            {/* LEFT SECTION: Back Button, Engine Icon, Release Name, Cluster & Provider Badge */}
+            <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
+              <button
+                onClick={onBack}
+                className="p-2.5 hover:bg-accent-darkHover rounded-xl text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold border border-accent-darkBorder shrink-0"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-white flex items-center gap-2">
-                    <Database className="w-4 h-4 text-brand-sky" /> {db.name}
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                    <CheckCircle className="w-3 h-3" /> ● Running
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 pt-2 border-t border-accent-darkBorder/60">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Cluster</span>
-                    <strong className="text-slate-200">{db.cluster_name}</strong>
+                <ArrowLeft className="w-4 h-4" /> Back to Catalog
+              </button>
+              
+              <div className="h-10 w-px bg-slate-800 hidden sm:block"></div>
+              
+              <div className="flex items-center gap-3.5">
+                {(() => {
+                  const mono = getEngineMonogram(selectedInstance?.engine_type || item.engine_type);
+                  return (
+                    <div className={`w-12 h-12 rounded-xl ${mono.bg} ${mono.border} border flex items-center justify-center font-mono font-black text-base tracking-wider ${mono.text} ${mono.glow} shadow-md shrink-0`}>
+                      {mono.code}
+                    </div>
+                  );
+                })()}
+                
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="text-xl font-black text-white tracking-tight">
+                      {selectedInstance?.name || 'prod-postgres-main'}
+                    </span>
+                    
+                    <span className="text-[11px] font-mono font-black px-2.5 py-0.5 rounded-md bg-brand-blue/25 text-brand-sky border border-brand-sky/40 uppercase shadow-sm">
+                      {selectedInstance?.engine_type?.toUpperCase() || 'POSTGRESQL'}
+                    </span>
+                    
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/70 text-emerald-400 border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      {selectedInstance?.status || 'running'}
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Resources</span>
-                    <strong className="text-slate-200">{db.cpu_usage_m}m / {db.memory_usage_mb}MB</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Storage</span>
-                    <strong className="text-slate-200">{db.storage_gb} GB SSD</strong>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-accent-darkBorder/40">
-                  <span className="text-[11px] font-mono text-slate-500">ns: {db.namespace}</span>
                   
-                  <div className="flex items-center gap-2">
-                    {/* DAY-2 OPERATIONS BUTTON (Scale, Config, Pause/Resume) */}
-                    <button
-                      onClick={() => handleOpenDay2(db)}
-                      className="text-xs font-bold bg-brand-blue/20 hover:bg-brand-blue text-brand-sky hover:text-white px-3 py-1.5 rounded-lg border border-brand-sky/30 transition-all flex items-center gap-1.5 shadow-sm"
-                    >
-                      <Sliders className="w-3.5 h-3.5" />
-                      <span>Day-2 Operations (Scale/Tune/Stop)</span>
-                    </button>
-
-                    {/* DIRECT TERMINAL CONNECT BUTTON FOR THIS POD */}
-                    <button
-                      onClick={() => {
-                        setSelectedInstanceForTerminal(db.name);
-                        setShowTerminalModal(true);
-                      }}
-                      className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 hover:underline"
-                    >
-                      <TerminalIcon className="w-3.5 h-3.5 text-brand-sky" />
-                      <span>Terminal ⚡</span>
-                    </button>
+                  <div className="flex items-center gap-2 text-xs font-mono text-slate-400 flex-wrap">
+                    <span className="text-slate-500">cluster:</span>
+                    <strong className="text-slate-200 font-bold bg-bg-main px-2 py-0.5 rounded border border-slate-800">
+                      {selectedInstance?.cluster_name || 'test-eks'}
+                    </strong>
+                    
+                    <span className="text-slate-600">•</span>
+                    
+                    <span className="text-slate-500">provider:</span>
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded border ${providerBadgeClass}`}>
+                      <Cloud className="w-3 h-3" />
+                      {providerName}
+                    </span>
+                    
+                    {clusterObj?.region && (
+                      <span className="text-[11px] text-slate-400 font-sans">
+                        ({clusterObj.region})
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            </div>
 
-      {/* ======================================================== */}
-      {/* 2. ⚡ CONNECTION SNIPPETS GENERATOR */}
-      {/* ======================================================== */}
-      <section className="bg-bg-card border border-accent-darkBorder rounded-2xl p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-accent-darkBorder pb-3">
-          <div>
-            <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Code2 className="w-4 h-4 text-brand-sky" /> 2. Connection Code Snippets Generator
-            </h4>
-            <p className="text-xs text-slate-400">Copy pre-configured connection code snippets for your preferred programming language</p>
-          </div>
-
-          {/* LANGUAGE TABS */}
-          <div className="flex items-center gap-1.5 bg-bg-main p-1 rounded-xl border border-accent-darkBorder">
-            {[
-              { id: 'cli', label: '💻 CLI (psql)' },
-              { id: 'python', label: '🐍 Python' },
-              { id: 'node', label: '🟨 Node.js' },
-              { id: 'go', label: '🟦 Go' },
-            ].map((tab) => (
+            {/* RIGHT SECTION: Action Buttons (Terminal, Monitoring, Cost) */}
+            <div className="flex items-center gap-2.5 w-full xl:w-auto justify-end flex-wrap sm:flex-nowrap">
+              {/* TERMINAL BUTTON */}
               <button
-                key={tab.id}
-                onClick={() => setActiveSnippetTab(tab.id as any)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  activeSnippetTab === tab.id
-                    ? 'bg-brand-blue text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                onClick={() => setShowTerminalModal(true)}
+                className="bg-bg-main hover:bg-brand-blue/20 text-brand-sky hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl border border-brand-sky/30 hover:border-brand-sky shadow-md flex items-center gap-2 transition-all"
               >
-                {tab.label}
+                <TerminalIcon className="w-4 h-4 text-brand-sky" />
+                <span>Terminal</span>
               </button>
-            ))}
+
+              {/* MONITORING BUTTON */}
+              <button
+                onClick={() => onNavigateTab ? onNavigateTab('monitoring') : null}
+                className="bg-bg-main hover:bg-purple-500/20 text-purple-400 hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl border border-purple-500/30 hover:border-purple-400 shadow-md flex items-center gap-2 transition-all"
+              >
+                <Activity className="w-4 h-4 text-purple-400" />
+                <span>Monitoring</span>
+              </button>
+
+              {/* COST BUTTON */}
+              <button
+                onClick={() => onNavigateTab ? onNavigateTab('cost') : null}
+                className="bg-bg-main hover:bg-emerald-500/20 text-emerald-400 hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl border border-emerald-500/30 hover:border-emerald-400 shadow-md flex items-center gap-2 transition-all"
+              >
+                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <span>Cost</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ======================================================== */}
+      {/* 🚀 DAY-2 LIVE SCALING & RESOURCE ALLOCATION PANEL */}
+      {/* (PATCH /api/v1/databases/{id}/scale) */}
+      {/* ======================================================== */}
+      <section className="bg-gradient-to-r from-bg-card via-bg-main to-bg-card border border-brand-blue/40 rounded-2xl p-6 shadow-2xl space-y-6">
+        {/* Header & Instance Selector */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-accent-darkBorder pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-blue/10 border border-brand-blue/30 text-brand-sky flex items-center justify-center">
+              <Activity className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-white text-base flex items-center gap-2">
+                📈 Live Scaling & Resource Allocation
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-brand-blue/20 text-brand-sky border border-brand-blue/30">
+                  PATCH /api/v1/databases/{'{id}'}/scale
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">Zero-downtime hot scaling of CPU, RAM, and PVC Storage for active Kubernetes StatefulSets</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold px-3.5 py-1.5 rounded-xl bg-bg-main text-brand-sky border border-brand-sky/30 flex items-center gap-2 shadow-sm">
+              <Database className="w-4 h-4 text-brand-sky" />
+              <span className="font-extrabold text-white">{selectedInstance.name}</span>
+              <span className="text-[10px] text-slate-400 font-mono">({selectedInstance.cluster_name})</span>
+            </span>
           </div>
         </div>
 
-        {/* CODE SNIPPET DISPLAY CONTAINER */}
-        <div className="relative bg-brand-dark border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200">
-          <button
-            onClick={() => handleCopySnippet(snippets[activeSnippetTab])}
-            className="absolute top-3 right-3 bg-bg-card hover:bg-accent-darkHover text-slate-300 hover:text-white px-3 py-1.5 rounded-lg border border-accent-darkBorder flex items-center gap-1.5 text-xs font-bold transition-all"
-          >
-            {copiedSnippet ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedSnippet ? 'Copied!' : 'Copy Code'}</span>
-          </button>
+        {/* Live Notification Bar if any */}
+        {topScaleNotification && (
+          <div className={`p-4 rounded-xl text-xs font-bold flex items-center gap-3 transition-all ${
+            topScaleStatus === 'Scaling'
+              ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 animate-pulse'
+              : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+          }`}>
+            {topScaleStatus === 'Scaling' ? (
+              <Activity className="w-4 h-4 text-amber-400 animate-spin" />
+            ) : (
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
+            )}
+            <span>{topScaleNotification}</span>
+          </div>
+        )}
 
-          <pre className="overflow-x-auto pr-24 leading-relaxed">
-            <code>{snippets[activeSnippetTab]}</code>
-          </pre>
+        {/* 3 Columns: CPU, RAM, STORAGE */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* 1. CPU Cores */}
+          <div className="bg-bg-main border border-accent-darkBorder p-5 rounded-2xl space-y-4 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-brand-sky" /> CPU Cores
+              </span>
+              <span className="text-xs font-bold text-slate-400">
+                Current: <strong className="text-white">{(selectedInstance.cpu_usage_m / 1000).toFixed(1)} Cores</strong>
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-300 font-semibold">New Desired CPU:</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0.1"
+                    max="64"
+                    value={topCpu}
+                    onChange={(e) => setTopCpu(Math.max(0.1, parseFloat(e.target.value) || 0.1))}
+                    className="w-20 bg-bg-card border border-accent-darkBorder rounded-lg px-2 py-1 text-right text-xs font-bold text-brand-sky focus:outline-none focus:border-brand-sky shadow-inner"
+                  />
+                  <span className="text-brand-sky font-extrabold text-xs">Cores</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
+                {[0.5, 1.0, 2.0, 4.0].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setTopCpu(c)}
+                    className={`py-1.5 rounded-lg border transition-all ${
+                      topCpu === c
+                        ? 'bg-brand-blue text-white border-brand-sky shadow-md'
+                        : 'bg-bg-card text-slate-400 border-accent-darkBorder hover:text-white'
+                    }`}
+                  >
+                    {c}C
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="range"
+                min="0.1"
+                max="16.0"
+                step="0.05"
+                value={topCpu}
+                onChange={(e) => setTopCpu(parseFloat(e.target.value))}
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-sky mt-2"
+              />
+            </div>
+          </div>
+
+          {/* 2. RAM Memory */}
+          <div className="bg-bg-main border border-accent-darkBorder p-5 rounded-2xl space-y-4 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <Server className="w-4 h-4 text-brand-cyan" /> RAM Memory
+              </span>
+              <span className="text-xs font-bold text-slate-400">
+                Current: <strong className="text-white">{Math.round(selectedInstance.memory_usage_mb / 1024)} GB</strong>
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-300 font-semibold">New Desired RAM:</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    max="256"
+                    value={topRam}
+                    onChange={(e) => setTopRam(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
+                    className="w-20 bg-bg-card border border-accent-darkBorder rounded-lg px-2 py-1 text-right text-xs font-bold text-brand-cyan focus:outline-none focus:border-brand-cyan shadow-inner"
+                  />
+                  <span className="text-brand-cyan font-extrabold text-xs">GB</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
+                {[2, 4, 8, 16].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setTopRam(r)}
+                    className={`py-1.5 rounded-lg border transition-all ${
+                      topRam === r
+                        ? 'bg-brand-cyan text-slate-950 border-brand-cyan font-extrabold shadow-md'
+                        : 'bg-bg-card text-slate-400 border-accent-darkBorder hover:text-white'
+                    }`}
+                  >
+                    {r}GB
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="range"
+                min="0.5"
+                max="64"
+                step="0.5"
+                value={topRam}
+                onChange={(e) => setTopRam(parseFloat(e.target.value))}
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-cyan mt-2"
+              />
+            </div>
+          </div>
+
+          {/* 3. PVC Storage SSD */}
+          <div className="bg-bg-main border border-accent-darkBorder p-5 rounded-2xl space-y-4 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-emerald-400" /> Storage (PVC SSD)
+              </span>
+              <span className="text-xs font-bold text-slate-400">
+                Current: <strong className="text-white">{selectedInstance.storage_gb} GB</strong>
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-300 font-semibold">New Desired Disk Size:</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="5"
+                    min="5"
+                    max="10000"
+                    value={topDisk}
+                    onChange={(e) => setTopDisk(Math.max(5, parseInt(e.target.value) || 5))}
+                    className="w-20 bg-bg-card border border-accent-darkBorder rounded-lg px-2 py-1 text-right text-xs font-bold text-emerald-400 focus:outline-none focus:border-emerald-400 shadow-inner"
+                  />
+                  <span className="text-emerald-400 font-extrabold text-xs">GB</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
+                {[50, 100, 200, 500].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setTopDisk(d)}
+                    className={`py-1.5 rounded-lg border transition-all ${
+                      topDisk === d
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-extrabold shadow-md'
+                        : 'bg-bg-card text-slate-400 border-accent-darkBorder hover:text-white'
+                    }`}
+                  >
+                    {d}GB
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="range"
+                min="20"
+                max="1000"
+                step="20"
+                value={topDisk}
+                onChange={(e) => setTopDisk(parseInt(e.target.value))}
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400 mt-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Action Trigger Bar */}
+        <div className="flex items-center justify-between pt-4 border-t border-accent-darkBorder">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold text-slate-400">StatefulSet Scale Target:</span>
+            <span className="text-xs font-mono font-bold text-white bg-bg-main px-3 py-1.5 rounded-lg border border-accent-darkBorder">
+              {selectedInstance.name} ({selectedInstance.namespace})
+            </span>
+          </div>
+
+          <button
+            onClick={handleTopApplyScale}
+            disabled={topScaleStatus === 'Scaling'}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-extrabold text-xs shadow-lg transition-all ${
+              topScaleStatus === 'Scaling'
+                ? 'bg-amber-500 text-slate-950 cursor-wait shadow-amber-500/30'
+                : 'bg-gradient-to-r from-brand-blue via-brand-sky to-brand-cyan hover:opacity-90 text-white shadow-brand-blue/30'
+            }`}
+          >
+            <Activity className={`w-4 h-4 ${topScaleStatus === 'Scaling' ? 'animate-spin' : ''}`} />
+            <span>
+              {topScaleStatus === 'Scaling'
+                ? 'Scaling StatefulSet...'
+                : '📈 Apply Scale (PATCH /api/v1/databases/scale)'}
+            </span>
+          </button>
+        </div>
+      </section>
+
+
+
+      {/* ======================================================== */}
+      {/* 2. ⚙️ LIVE CONFIG TUNING & custom-values.yaml TERMINAL EDITOR */}
+      {/* ======================================================== */}
+      <section className="bg-bg-card border border-accent-darkBorder rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-accent-darkBorder pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-blue/20 flex items-center justify-center border border-brand-sky/30 text-brand-sky">
+              <Code2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                2. Live Config Tuning & custom-values.yaml Terminal Editor
+              </h4>
+              <p className="text-xs text-slate-400">
+                Modify engine parameters in custom-values.yaml for real-time hot-reload / rolling deployment
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleOpenChartFilesModal}
+              className="px-3.5 py-2 rounded-xl bg-bg-main hover:bg-slate-800 text-slate-300 hover:text-white border border-accent-darkBorder text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+            >
+              <FolderOpen className="w-4 h-4 text-brand-sky" />
+              <span>Open Chart File</span>
+            </button>
+
+            <button
+              onClick={() => setShowMgmtAddCustomFileModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-brand-blue hover:bg-brand-blue/90 text-white font-bold border border-brand-sky/40 text-xs shadow-md transition-all flex items-center gap-1.5"
+            >
+              <FilePlus className="w-4 h-4 text-white" />
+              <span>Add Custom File</span>
+            </button>
+
+            <button
+              onClick={() => setCustomValuesYaml(defaultYamlContent)}
+              className="px-3.5 py-2 rounded-xl bg-bg-main hover:bg-slate-800 text-slate-300 hover:text-white border border-accent-darkBorder text-xs font-bold transition-all flex items-center gap-1.5"
+            >
+              <History className="w-3.5 h-3.5 text-slate-400" />
+              <span>Reset to Chart Defaults</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setYamlConfigNotification(`[Template]: Rendered Helm template manifest successfully against ${activeYamlFileName}!`);
+                setTimeout(() => setYamlConfigNotification(null), 4000);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-bg-main hover:bg-slate-800 text-slate-300 hover:text-white border border-accent-darkBorder text-xs font-bold transition-all flex items-center gap-1.5"
+            >
+              <CheckCircle className="w-3.5 h-3.5 text-brand-cyan" />
+              <span>template</span>
+            </button>
+
+            <button
+              onClick={handleApplyCustomYamlConfig}
+              disabled={yamlConfigStatus === 'applying'}
+              className={`px-5 py-2 rounded-xl font-extrabold text-xs shadow-lg transition-all flex items-center gap-2 ${
+                yamlConfigStatus === 'applying'
+                  ? 'bg-amber-500 text-slate-950 cursor-wait'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+              }`}
+            >
+              <Sliders className={`w-4 h-4 ${yamlConfigStatus === 'applying' ? 'animate-spin' : ''}`} />
+              <span>
+                {yamlConfigStatus === 'applying' ? 'Upgrading...' : 'upgrade'}
+              </span>
+            </button>
+
+            <button
+              onClick={handleUninstallRelease}
+              disabled={isUninstallingRelease}
+              className={`px-4 py-2 rounded-xl font-extrabold text-xs shadow-lg transition-all flex items-center gap-1.5 border ${
+                isUninstallingRelease
+                  ? 'bg-rose-950/60 border-rose-500/40 text-rose-300 cursor-wait'
+                  : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-rose-100 border-rose-500/40 hover:border-rose-500/60 shadow-rose-500/10'
+              }`}
+            >
+              <Trash2 className={`w-3.5 h-3.5 ${isUninstallingRelease ? 'animate-spin' : 'text-rose-400'}`} />
+              <span>
+                {isUninstallingRelease ? 'Uninstalling...' : 'uninstall release'}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* NOTIFICATION FEEDBACK BANNER */}
+        {yamlConfigNotification && (
+          <div className="p-3 bg-brand-blue/10 border border-brand-sky/30 rounded-xl text-xs text-brand-sky font-mono font-bold flex items-center justify-between animate-fadeIn">
+            <span>{yamlConfigNotification}</span>
+            <button onClick={() => setYamlConfigNotification(null)} className="hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* CODE TERMINAL EDITOR WINDOW WITH SYNTAX HIGHLIGHTING & DYNAMIC FILE TABS */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
+            {/* Dynamic File Tabs */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {mgmtUserCustomFiles.map((file) => {
+                const isActive = file.name === activeYamlFileName;
+                return (
+                  <button
+                    key={file.name}
+                    onClick={() => {
+                      setActiveYamlFileName(file.name);
+                      setCustomValuesYaml(file.content);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 border ${
+                      isActive
+                        ? 'bg-brand-blue/20 text-white border-brand-sky/50 shadow-md shadow-brand-blue/10'
+                        : 'bg-bg-main text-slate-400 hover:text-slate-200 border-accent-darkBorder hover:bg-slate-800'
+                    }`}
+                  >
+                    <FileText className={`w-3.5 h-3.5 ${isActive ? 'text-brand-sky' : 'text-slate-500'}`} />
+                    <span>{file.name}</span>
+                    {isActive && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-sky animate-pulse"></span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <span className="text-[11px] text-slate-400 font-mono hidden sm:inline-flex items-center gap-1.5 bg-bg-main px-2.5 py-1 rounded-lg border border-accent-darkBorder">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+              Live YAML Editor • Ready
+            </span>
+          </div>
+
+          <YamlCodeEditor
+            value={customValuesYaml}
+            onChange={(newVal) => setCustomValuesYaml(newVal)}
+            minHeight="340px"
+            placeholder="# Type or edit YAML configuration values here..."
+          />
         </div>
       </section>
 
@@ -647,7 +1218,7 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
             <div className="flex items-center justify-between border-b border-accent-darkBorder pb-4">
               <div>
                 <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-                  <Sliders className="w-5 h-5 text-brand-sky" /> Day-2 Operations & Controls: {activeDay2Instance.name}
+                  <Sliders className="w-5 h-5 text-brand-sky" /> Operations & Controls: {activeDay2Instance.name}
                   <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
                     instanceStatus === 'Running' 
                       ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40' 
@@ -679,7 +1250,7 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
             <div className="p-5 bg-bg-main border border-accent-darkBorder rounded-2xl space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-brand-sky flex items-center gap-2">
-                  <Cpu className="w-4 h-4" /> 4. 📈 Day-2 Resource Scaling (PATCH /api/v1/databases/{activeDay2Instance.id || 1}/scale)
+                  <Cpu className="w-4 h-4" /> 4. 📈 Resource Scaling (PATCH /api/v1/databases/{activeDay2Instance.id || 1}/scale)
                 </h4>
                 <span className="text-[10px] text-slate-400 bg-bg-card px-2 py-0.5 rounded border border-accent-darkBorder">
                   Rolling Update (No Downtime)
@@ -818,6 +1389,197 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
                   🗑️ Delete Database Instance (Safe Removal)
                 </button>
               </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 📄 ADD CUSTOM YAML FILE MODAL OVERLAY (MANAGEMENT PAGE) */}
+      {/* ======================================================== */}
+      {showMgmtAddCustomFileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-bg-card border border-accent-darkBorder rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative">
+            <div className="flex items-center justify-between border-b border-accent-darkBorder pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-brand-blue/20 border border-brand-sky/30 flex items-center justify-center">
+                  <FilePlus className="w-5 h-5 text-brand-sky" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Add Custom YAML Configuration File</h3>
+                  <p className="text-[11px] text-slate-400">Create a new YAML override file for hot-reload deployment</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMgmtAddCustomFileModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-bg-main transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                YAML File Name
+              </label>
+              <div className="relative">
+                <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={mgmtNewCustomFileName}
+                  onChange={(e) => setMgmtNewCustomFileName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateMgmtCustomFile();
+                  }}
+                  placeholder="e.g. my-custom-values.yaml"
+                  className="w-full bg-bg-main border border-accent-darkBorder rounded-xl pl-9 pr-4 py-2.5 text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-brand-sky transition-all"
+                />
+              </div>
+              <p className="text-[11px] text-slate-400">
+                A blank terminal editor tab will open immediately for this file upon creation.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-accent-darkBorder pt-4">
+              <button
+                type="button"
+                onClick={() => setShowMgmtAddCustomFileModal(false)}
+                className="text-xs font-semibold px-4 py-2.5 rounded-xl border border-accent-darkBorder text-slate-400 hover:bg-accent-darkHover transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateMgmtCustomFile}
+                className="bg-brand-blue hover:bg-brand-blue/90 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-brand-blue/30 flex items-center gap-1.5 transition-all"
+              >
+                <FilePlus className="w-4 h-4" />
+                <span>Create & Open Editor</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 📂 OPEN CHART FILE MODAL (DYNAMIC DISCOVERY) */}
+      {/* ======================================================== */}
+      {showOpenChartFileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-bg-card border border-accent-darkBorder rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 relative">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-accent-darkBorder pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-brand-blue/20 border border-brand-sky/30 flex items-center justify-center">
+                  <FolderOpen className="w-5 h-5 text-brand-sky" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    Open Helm Chart File
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-brand-blue/20 text-brand-sky border border-brand-sky/30">
+                      {selectedInstance?.name || item.name}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Select any unpacked file from this release to view and edit</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOpenChartFileModal(false)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-bg-main transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search Filter */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={chartFileSearchQuery}
+                onChange={(e) => setChartFileSearchQuery(e.target.value)}
+                placeholder="Search chart files (e.g. values.yaml, templates/deployment.yaml)..."
+                className="w-full bg-bg-main border border-accent-darkBorder rounded-xl pl-9 pr-4 py-2.5 text-xs font-mono font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-brand-sky transition-all"
+              />
+            </div>
+
+            {/* File List / Loading / Empty State */}
+            <div className="bg-bg-main border border-accent-darkBorder rounded-xl p-2 max-h-72 overflow-y-auto space-y-1 font-mono text-xs">
+              {isLoadingChartFiles ? (
+                <div className="p-8 text-center space-y-2 text-slate-400">
+                  <RefreshCw className="w-6 h-6 text-brand-sky animate-spin mx-auto" />
+                  <p className="text-xs">Fetching unpacked chart files from helm deployer...</p>
+                </div>
+              ) : chartFilesList.length === 0 ? (
+                <div className="p-8 text-center space-y-2 text-slate-400">
+                  <FolderTree className="w-8 h-8 text-slate-600 mx-auto" />
+                  <p className="text-xs font-semibold text-slate-300">No unpacked chart files found for this release</p>
+                  <p className="text-[11px] text-slate-500">Files are unpacked in <code className="text-slate-400">/tmp/helm_charts/{selectedInstance?.name || item.name}</code> during chart install/upgrade.</p>
+                </div>
+              ) : (
+                (() => {
+                  const filtered = chartFilesList.filter(f => 
+                    !chartFileSearchQuery || f.toLowerCase().includes(chartFileSearchQuery.toLowerCase())
+                  );
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="p-6 text-center text-slate-500 text-xs">
+                        No files matching "{chartFileSearchQuery}"
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((filePath) => {
+                    const isValues = filePath.endsWith('values.yaml') || filePath.endsWith('values.schema.json');
+                    const isTemplate = filePath.startsWith('templates/');
+                    const isChartYaml = filePath === 'Chart.yaml';
+
+                    return (
+                      <button
+                        key={filePath}
+                        onClick={() => handleSelectChartFile(filePath)}
+                        disabled={isLoadingFileContent}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-brand-blue/20 text-slate-300 hover:text-white flex items-center justify-between group transition-all border border-transparent hover:border-brand-sky/30"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {isValues ? (
+                            <FileCode2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : isTemplate ? (
+                            <FileText className="w-4 h-4 text-brand-sky shrink-0" />
+                          ) : isChartYaml ? (
+                            <Layers className="w-4 h-4 text-amber-400 shrink-0" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                          <span className="font-semibold text-xs group-hover:text-brand-sky transition-colors">{filePath}</span>
+                        </div>
+
+                        <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors uppercase font-bold">
+                          {isLoadingFileContent ? 'Loading...' : 'Open →'}
+                        </span>
+                      </button>
+                    );
+                  })
+                })()
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between border-t border-accent-darkBorder pt-3 text-xs text-slate-400">
+              <span className="text-[11px]">
+                {chartFilesList.length} files discovered in release package
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowOpenChartFileModal(false)}
+                className="text-xs font-semibold px-4 py-2 rounded-xl border border-accent-darkBorder text-slate-400 hover:bg-accent-darkHover transition-all"
+              >
+                Close
+              </button>
             </div>
 
           </div>

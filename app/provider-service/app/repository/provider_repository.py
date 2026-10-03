@@ -14,14 +14,16 @@ class ProviderRepository:
         user_id: int, 
         alias: str, 
         provider_type: str,
-        credentials_status: str
+        credentials_status: str,
+        credentials: Optional[dict] = None
     ):
         """Create provider credentials."""
         db_item = Provider_DB(
             user_id=user_id,
             alias=alias,
             provider_type=provider_type,
-            credentials_status=credentials_status
+            credentials_status=credentials_status,
+            credentials=credentials
         )
 
         db.add(db_item)

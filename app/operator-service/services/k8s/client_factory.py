@@ -1,43 +1,59 @@
 import logging
-from kubernetes_asyncio import client, config
-from sqlalchemy.ext.asyncio import AsyncSession
+from kubernetes_asyncio import client
 from typing import Optional
-from db.models.models import ClusterDB
+import os
+import base64
+import tempfile
 
 logger = logging.getLogger(__name__)
 
 
-# Client with all info aboout cluster
-
 class K8sClientFactory:
- 
+
     @staticmethod
     def create_client(
         api_server_url: str, 
         auth_token: str,
         verify_ssl: bool = False,
         ssl_ca_cert: Optional[str] = None,
-    ):
-        config = client.Configuration()  # object 
-        config.host = api_server_url
-        config.api_key = {"authorization": f"Bearer {auth_token}"}
-        config.verify_ssl = verify_ssl
-        if ssl_ca_cert:
-            config.ssl_ca_cert = ssl_ca_cert
-        return client.ApiClient(configuration=config)
-    
-# Call this method to create a k8s client through the give parameters to create a cluster entity.
-    @classmethod
-    def create_from_cluster_entity(
-        cls,
-        cluster: ClusterDB,  # cluster object 
-        verify_ssl: bool = False,
     ) -> client.ApiClient:
- 
-        logger.debug("Creating K8s ApiClient for cluster ID=%s (%s)", cluster.id, cluster.cluster_name)
+        clean_token = (auth_token or "").strip()
+        if clean_token.lower().startswith("bearer "):
+            clean_token = clean_token[7:].strip()
 
-        return cls.create_client(
-            api_server_url=cluster.api_server_url,
-            auth_token=cluster.auth_token,
-            verify_ssl=verify_ssl,
-        ) # -> api_client object 
+        configuration = client.Configuration()
+        configuration.host = api_server_url.rstrip("/")
+        # In kubernetes_asyncio, Configuration.auth_settings() specifically checks 'BearerToken'
+        configuration.api_key = {
+            "BearerToken": clean_token,
+            "authorization": clean_token,
+        }
+        configuration.api_key_prefix = {
+            "BearerToken": "Bearer",
+            "authorization": "Bearer",
+        }
+        configuration.verify_ssl = verify_ssl
+        if ssl_ca_cert and verify_ssl:
+            if os.path.exists(ssl_ca_cert):
+                configuration.ssl_ca_cert = ssl_ca_cert
+            else:
+                try:
+                    ca_data = ssl_ca_cert
+                    if not ca_data.startswith("-----BEGIN"):
+                        try:
+                            ca_data = base64.b64decode(ssl_ca_cert).decode("utf-8")
+                        except Exception as e:
+                            logger.error(f"Invalid base64 CA cert: {e}")
+                            raise ValueError("Invalid base64 CA cert")
+                    
+                    # Create, write and close the file
+                    tmp_ca = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".crt")
+                    tmp_ca.write(ca_data)
+                    tmp_ca.flush()
+
+                    configuration.ssl_ca_cert = tmp_ca.name
+                except Exception as e:
+                    logger.warning("Failed to parse ca_cert data into temp file: %s", e)
+                    configuration.verify_ssl = False
+                        
+        return client.ApiClient(configuration=configuration)

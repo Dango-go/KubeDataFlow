@@ -1,48 +1,43 @@
-FROM python:3.12-slim AS builder
+FROM python:3.11-slim as builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-FROM python:3.12-slim AS runner
+FROM python:3.11-slim AS final
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/appuser/.local/bin:${PATH}"
+
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/sh -m appuser
 
 WORKDIR /app
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/install/bin:$PATH" \
-    PYTHONPATH="/app:$PYTHONPATH"
+# Install curl and Helm CLI v3
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git && \
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Helm 3 CLI & dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    tar \
-    git \
-    && curl -fsSL https://get.helm.sh/helm-v3.14.2-linux-amd64.tar.gz -o helm.tar.gz \
-    && tar -zxvf helm.tar.gz \
-    && mv linux-amd64/helm /usr/local/bin/helm \
-    && rm -rf linux-amd64 helm.tar.gz /var/lib/apt/lists/*
-
-# Copy installed Python packages from builder stage
-COPY --from=builder /install /install
-
-# Create non-root system user and temporary directories
-RUN addgroup --system appgroup && adduser --system --group appuser \
-    && mkdir -p /tmp/helm_charts /tmp/kubeconfigs \
-    && chown -R appuser:appgroup /tmp/helm_charts /tmp/kubeconfigs
-
-COPY . /app/
-RUN chown -R appuser:appgroup /app
+COPY --from=builder /root/.local /home/appuser/.local
+COPY --chown=appuser:appgroup . /app
 
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8001/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

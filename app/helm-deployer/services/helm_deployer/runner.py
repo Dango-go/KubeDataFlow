@@ -8,10 +8,11 @@ class HelmRunner:
         self.helm_bin = helm_bin
 
     # all commands generator in one method 
-    async def _run_command(self, cmd: List[str], timeout: int = 300) -> str:
+    async def _run_command(self, cmd: List[Any], timeout: int = 300) -> str:
+        cmd_strs = [str(arg) for arg in cmd]
         try:
             process = await asyncio.create_subprocess_exec(
-                *cmd, # always get list commands from object
+                *cmd_strs, # always get list commands from object
                 stdout=asyncio.subprocess.PIPE,   # buffers to save stdout and stderr this proccess
                 stderr=asyncio.subprocess.PIPE
             )
@@ -24,7 +25,7 @@ class HelmRunner:
             stderr = stderr_bytes.decode("utf-8").strip()
 
             if process.returncode != 0:
-                cmd_str = " ".join(cmd)
+                cmd_str = " ".join(cmd_strs)
                 raise RuntimeError(
                     f"Helm CLI command failed with code {process.returncode}.\n"
                     f"Command: {cmd_str}\n"
@@ -34,7 +35,7 @@ class HelmRunner:
             return stdout
 
         except asyncio.TimeoutError:
-            raise RuntimeError(f"Helm CLI command timed out after {timeout} seconds: {' '.join(cmd)}")
+            raise RuntimeError(f"Helm CLI command timed out after {timeout} seconds: {' '.join(cmd_strs)}")
         except FileNotFoundError:
             raise RuntimeError(
                 f"Helm binary '{self.helm_bin}' was not found. Please ensure Helm is installed and in PATH."
@@ -59,9 +60,10 @@ class HelmRunner:
         kubeconfig_path: str,
         namespace: str = "default",
         values_file: Optional[str] = None,
-        wait: bool = True,
+        wait: bool = False,
         timeout: int = 300
     ) -> str:
+
 
         cmd = [
             self.helm_bin,

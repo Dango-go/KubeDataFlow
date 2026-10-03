@@ -4,7 +4,7 @@ from core.database import Base
 
 
 class ConfigSchemaEntity(Base):
-    __tablename__ = "config_schemas"
+    __tablename__ = "schema"
 
     id = Column(Integer, primary_key=True, index=True)
     engine_id = Column(Integer, ForeignKey("database_engines.id"), nullable=False)

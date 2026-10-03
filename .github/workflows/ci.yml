@@ -1,0 +1,116 @@
+name: CI/CD Pipeline for Microservices
+
+on:
+  push:
+    branches: [ "dev" ]
+    paths:
+      - 'app/**'
+      - 'ui/**'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    strategy:
+      matrix:
+        service: [auth, provider, provisioner, helm, operator, info, cost, discovery, ui]
+        include:
+          - service: auth
+            directory: app/auth-service
+            image_name: auth-service
+          - service: provider
+            directory: app/provider-service
+            image_name: provider-service
+          - service: provisioner
+            directory: app/db-provisioning-service
+            image_name: provisioner-service
+          - service: helm
+            directory: app/helm-deployer
+            image_name: helm-service
+          - service: operator
+            directory: app/operator-service
+            image_name: operator-service
+          - service: info
+            directory: app/db-info-service
+            image_name: info-service
+          - service: cost
+            directory: app/cost-management-service
+            image_name: cost-service
+          - service: discovery
+            directory: app/discovery-service
+            image_name: discovery-service
+          - service: ui
+            directory: ui
+            image_name: ui-service
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+
+    - name: Check for changes in service directory
+      id: filter
+      uses: dorny/paths-filter@v3
+      with:
+        filters: |
+          changed:
+            - '${{ matrix.directory }}/**'
+
+    - name: Install dependencies
+      if: steps.filter.outputs.changed == 'true' && matrix.service != 'ui'
+      run: |
+        cd ${{ matrix.directory }}
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Install npm dependencies (ui)
+      if: steps.filter.outputs.changed == 'true' && matrix.service == 'ui' && steps.filter.outputs.changed == 'true'
+      run: |
+        cd ${{ matrix.directory }}
+        npm ci
+
+    - name: Run tests (ui)
+      if: steps.filter.outputs.changed == 'true' && matrix.service == 'ui' && steps.filter.outputs.changed == 'true'
+      
+      run: |
+        cd ${{ matrix.directory }}
+        npm test -- --ci && npm run build
+         
+
+    - name: Set up Docker Buildx
+      if: steps.filter.outputs.changed == 'true'
+      uses: docker/setup-buildx-action@v3    
+
+    - name: Log in to Docker Hub
+      if: steps.filter.outputs.changed == 'true'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Run Trivy vulnerability scanner (Optional/Placeholder)
+      if: steps.filter.outputs.changed == 'true'
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '${{ matrix.directory }}'
+        severity: 'CRITICAL,HIGH'
+
+
+    - name: Build and Push Docker Images
+      if: steps.filter.outputs.changed == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.directory }}
+        file: ${{ matrix.directory }}/Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

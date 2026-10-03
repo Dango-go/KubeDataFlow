@@ -15,9 +15,20 @@ class K8sClientFactory:
         verify_ssl: bool = False,
         ssl_ca_cert: Optional[str] = None,
     ):
-        config = client.Configuration()  # object 
-        config.host = api_server_url
-        config.api_key = {"authorization": f"Bearer {auth_token}"}
+        clean_token = (auth_token or "").strip()
+        if clean_token.lower().startswith("bearer "):
+            clean_token = clean_token[7:].strip()
+
+        config = client.Configuration()
+        config.host = api_server_url.rstrip("/")
+        config.api_key = {
+            "BearerToken": clean_token,
+            "authorization": clean_token,
+        }
+        config.api_key_prefix = {
+            "BearerToken": "Bearer",
+            "authorization": "Bearer",
+        }
         config.verify_ssl = verify_ssl
         if ssl_ca_cert:
             config.ssl_ca_cert = ssl_ca_cert

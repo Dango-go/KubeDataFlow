@@ -4,9 +4,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     API_SERVICE_NAME: str = "Helm Service"
     API_V1: str = "/api/v1"
-    POSTGRES_USER: str = "helm-admin"
-    POSTGRES_PASSWORD: str = "0000011111"
-    POSTGRES_SERVER: str = "localhost"
+    POSTGRES_USER: str = "helm"
+    POSTGRES_PASSWORD: str = "helm"
+    POSTGRES_SERVER: str = "postgres"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB_NAME: str = "helm_db"
 

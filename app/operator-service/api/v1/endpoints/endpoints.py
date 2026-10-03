@@ -1,56 +1,94 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
-from api.v1.endpoints.schemas import ApplyRequest
-from api.core.database import db_session
-from api.services.k8s.client_factory import K8sClientFactory
-from services.operator_manager.service import MainService
+from fastapi import APIRouter, HTTPException
+from typing import Dict, Any
+from kubernetes_asyncio.client.rest import ApiException
+from api.v1.endpoints.schemas import ApplyRequest, DeleteRequest, GetResourceRequest
+from services.operator_manager.service import ServiceYAMLManager
+
+router = APIRouter(prefix="/api/v1/operator", tags=["operator"])
 
 
-router = APIRouter(prefix="/api/v1/helm", tags=["helm"])
-
-
-# POST /api/v1/helm/apply
+# POST /api/v1/operator/apply
 @router.post("/apply")
-async def deploy_chart(
-    request: ApplyRequest,
-    db: AsyncSession = Depends(db_session)
-):
-    cluster_info = await db.get(ClusterDB, request.cluster_id)
-    service = MainService(db_session=db)
-    applied = await service.apply_manifest(
-        # main data
-        content=request.content,
-        target_namespace=request.target_namespace,
-        resource_name=request.resource_name,
-        cloud_name=request.cloud_name,
-        cloud_region=request.cloud_region,
-        cluster_uid=request.cluster_uid,
-        # data from DB
-        api_server_url=cluster_info.api_server_url,
-        ca_cert_data=cluster_info.ca_cert_data,
-        token=cluster_info.token,
-    )
+async def deploy_manifest(request: ApplyRequest):
+    service = ServiceYAMLManager()
+    try:
+        applied = await service.apply_manifest(
+            resource_name=request.resource_name,
+            target_namespace=request.target_namespace,
+            content=request.content,
+            cluster_name=request.cluster_name
+        )
+        return {
+            "status": "success",
+            "resource_name": request.resource_name,
+            "namespace": request.target_namespace,
+            "output": applied
+        }
+    except ApiException as e:
+        if e.status == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Resource endpoint not found on cluster '{request.cluster_name}' (HTTP 404). {e.body or e.reason}"
+            )
+        raise HTTPException(
+            status_code=e.status or 500,
+            detail=f"Kubernetes API error ({e.status}): {e.reason or e.body or str(e)}"
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return {
-        "status": "success",
-        "release_name": request.release_name,
-        "namespace": request.namespace,
-        "output": applied
-    }
 
+# POST /api/v1/operator/status
+@router.post("/status")
+async def get_resource_status(request: GetResourceRequest):
+    service = ServiceYAMLManager()
+    try:
+        resource_status = await service.get_resource_status(
+            api_server_url=request.api_server_url,
+            auth_token=request.auth_token,
+            group=request.group,
+            version=request.version,
+            namespace=request.namespace,
+            kind=request.kind,
+            plural=request.plural,
+            name=request.name,
+            ca_cert_data=request.ca_cert_data
+        )
+        return {
+            "status": "success",
+            "resource_name": request.name,
+            "data": resource_status
+        }
+    except ApiException as e:
+        raise HTTPException(status_code=e.status or 500, detail=f"K8s API error: {e.body or e.reason}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# POST /api/v1/operator/delete
 @router.post("/delete")
-async def delete_resource(
-    request: DeleteRequest
-):
-    service = MainService()
-    deleting = await service.delete_manifest(
-        api_client=client.ApiClient,
-        group=request.group,
-        version=request.version,
-        namespace=request.namespace,
-        kind=request.kind,
-        plural=request.plural,
-        name=request.name,
-    )
-
+async def delete_resource(request: DeleteRequest):
+    service = ServiceYAMLManager()
+    try:
+        deleting = await service.delete_manifest(
+            api_server_url=request.api_server_url,
+            auth_token=request.auth_token,
+            group=request.group,
+            version=request.version,
+            namespace=request.namespace,
+            kind=request.kind,
+            plural=request.plural,
+            name=request.name,
+            ca_cert_data=request.ca_cert_data
+        )
+        return {
+            "status": "success",
+            "resource_name": request.name,
+            "deleted": deleting
+        }
+    except ApiException as e:
+        raise HTTPException(status_code=e.status or 500, detail=f"K8s API error: {e.body or e.reason}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,1 @@
+# NotificationServiceClient HTTP client placeholder
