@@ -34,12 +34,14 @@ const isCrdResource = (db: DeployedDatabase): boolean => {
       return true;
     }
   }
+  const lowerName = (db.name || '').toLowerCase();
   if (
-    db.name.startsWith('secret-') ||
-    db.name.startsWith('crd-') ||
-    db.name.startsWith('cm-') ||
-    db.name.startsWith('configmap-') ||
-    db.name.startsWith('operator-')
+    lowerName === 'secret' ||
+    lowerName.startsWith('secret') ||
+    lowerName.includes('crd') ||
+    lowerName.includes('configmap') ||
+    lowerName.startsWith('cm-') ||
+    lowerName.startsWith('operator-')
   ) {
     return true;
   }
@@ -280,7 +282,7 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
                   <h4 className="text-lg font-bold text-white flex items-center gap-2">
                     {selectedDb.name}
                     <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
-                      ● {selectedDb.status.toUpperCase()}
+                      ● {(isCrdResource(selectedDb) ? 'created' : selectedDb.status).toUpperCase()}
                     </span>
                   </h4>
                   <p className="text-xs text-slate-400">Cluster: {selectedDb.cluster_name} | Namespace: {selectedDb.namespace}</p>
@@ -427,7 +429,7 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
                       <td className="p-4 text-slate-400 text-xs font-mono">{db.cluster_name}</td>
                       <td className="p-4">
                         <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
-                          ● {db.status}
+                          ● {isCrdResource(db) ? 'created' : db.status}
                         </span>
                       </td>
                       <td className="p-4 text-xs text-slate-300">

@@ -1,8 +1,5 @@
-import os, shutil, tempfile
 from pathlib import Path
-import httpx
-import tarfile, gzip
-import yaml
+import asyncio
 
 
 class ChartManager:
@@ -15,63 +12,26 @@ class ChartManager:
         release_dir = self.base_temp_dir / release_name
         release_dir.mkdir(parents=True, exist_ok=True)
 
-        #repo url
-        url = repo_url.rstrip("/")
-        chart_url_index_yaml =  f"{url}/index.yaml"
-        chart_download_url = None
+        cmd = ["helm", "pull", chart_name, "--repo", repo_url, "--untar", "--untardir", str(release_dir)]
 
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            try:
-                index_resp = await client.get(chart_url_index_yaml)
-                if index_resp.status_code == 200:
-                    index_data = yaml.safe_load(index_resp.text)
-                    entries = index_data.get("entries", {}).get(chart_name, [])
-                else:
-                    return f"Error {index_resp.status_code} while installing {chart_url_index_yaml}"
-        
-                target_entry = None
-                for entry in entries:
-                    if chart_version in ["latest", "", None] or entry.get("version") == chart_version:
-                        target_entry = entry
-                        break
+        if chart_version and chart_version not in ["latest", "", None]:
+            cmd.extend(["--version", chart_version])
 
-                if target_entry and target_entry['urls']:
-                    chart_url = target_entry['urls'][0]
-                    if chart_url.startswith("http://") or chart_url.startswith("https://"):
-                        chart_download_url = chart_url
-                    else:
-                        chart_download_url = f"{url}/{chart_url.lstrip('/')}"
-                    
-            except Exception as e:
-                print(f"Failed to parse index.yaml from {chart_url_index_yaml}: {e}")
-                    
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            raise Exception(f"Failed to pull chart: {stderr.decode('utf-8')}")
 
-
-
-        # netrequest + install
-        async with httpx.AsyncClient() as client: 
-            # response.content had bytes of the .tgz file 
-            response = await client.get(chart_download_url, follow_redirects=True)
-            if response.status_code != 200:
-                raise Exception(f"Failed to download chart from {chart_url}, status: {response.status_code}")
-
-            archive_path = release_dir / f"{chart_name}.tgz"
-            # save response.content in dir of archive_path
-            archive_path.write_bytes(response.content)
-
-
-        with tarfile.open(archive_path, "r:gz") as tar:
-            # unpack .tgz
-            tar.extractall(path=release_dir)
-
-            # rm .tgz file after unpacking
-            archive_path.unlink(missing_ok=True)
- 
         chart_extracted_path = release_dir / chart_name
         if chart_extracted_path.exists():
-            return str(chart_extracted_path)    
-        
-        return str(release_dir)  # return str(path_to_file)
+            return str(chart_extracted_path)
+
+        return str(release_dir)
+
     
 
     # READ AND RETURN content of file  

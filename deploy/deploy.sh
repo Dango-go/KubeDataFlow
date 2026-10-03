@@ -1,10 +1,27 @@
 #!/bin/bash
 set -e
 
+DISK_DEV="/dev/xvdf"
+MOUNT_POINT="/mnt"
+ 
+if [ -b "$DISK_DEV" ]; then
 
-sudo mkdir -p /mnt
-if ! mountpoint -q /mnt; then
-    sudo mount /dev/nvme1n1p1 /mnt
+    if ! sudo blkid "$DISK_DEV" > /dev/null 2>&1; then
+        echo "⚡ Disk $DISK_DEV is not formatted. Creating ext4 filesystem..."
+        sudo mkfs.ext4 -F "$DISK_DEV"
+    else
+        echo "✓ Filesystem on $DISK_DEV already exists."
+    fi
+ 
+    sudo mkdir -p "$MOUNT_POINT"
+    if ! mountpoint -q "$MOUNT_POINT"; then
+        echo "📦 Mounting $DISK_DEV to $MOUNT_POINT..."
+        sudo mount "$DISK_DEV" "$MOUNT_POINT"
+    else
+        echo "✓ $MOUNT_POINT is already mounted."
+    fi
+else
+    echo "⚠️ Warning: Device $DISK_DEV not found. Using local filesystem."
 fi
 
 echo "📁 Creating directories..."
@@ -15,7 +32,7 @@ mkdir -p init-scripts
 
 touch .env
 cat << 'EOF' > .env
-DOCKERHUB_USERNAME=""
+DOCKERHUB_USERNAME="dango17"
 EOF
 
 
@@ -262,6 +279,24 @@ services:
     networks:
       - idp-network
 
+  #monitoring-service:
+    #image: ${DOCKERHUB_USERNAME}/monitoring-service:latest
+    #container_name: idp-monitoring-service
+    #restart: unless-stopped
+    #ports:
+      #- "8009:8001"
+    #depends_on:
+      #postgres:
+        #condition: service_started
+    #healthcheck:
+      #test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      #interval: 30s
+      #timeout: 5s
+      #retries: 3
+    #networks:
+      #- idp-network
+
+
   ui:
     image: ${DOCKERHUB_USERNAME}/ui-service:latest
     container_name: idp-ui
@@ -378,5 +413,7 @@ docker compose ps
         #echo "✅ Vault unsealed successfully!"
     #fi
 #fi
+
+chmod +x "$0"
 
 echo "✅ System is fully deployed and initialized!"
