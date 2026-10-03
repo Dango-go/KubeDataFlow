@@ -47,12 +47,15 @@ class ApplyRequest(BaseModel):
     cluster_name: str
     release_name: str
     chart_name: str
+    provider_name: Optional[str] = None
+    release_version: Optional[str] = "latest"
     api_server_url: Optional[str] = None
     ca_cert_data: Optional[str] = None
     token: Optional[str] = None
     user_name: str = "cluster-admin"
     namespace: str = "default"
     target_values_file: Optional[str] = None
+    chart_content: Optional[str] = None
 
 
 class ChartPullResponse(BaseModel):

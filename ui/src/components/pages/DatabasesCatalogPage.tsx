@@ -4,6 +4,7 @@ import { DeployedDatabase, CategoryType } from '../../types';
 import { apiClient } from '../../services/apiClient';
 import { DatabaseManagementCatalogPage } from './DatabaseManagementCatalogPage';
 import { DatabaseEngineOverviewPage } from './DatabaseEngineOverviewPage';
+import { CrdManagementConsolePage } from './CrdManagementConsolePage';
 import { 
   Database, 
   Settings, 
@@ -54,6 +55,7 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
   onTitleChange 
 }) => {
   const [selectedDb, setSelectedDb] = useState<DeployedDatabase | null>(null);
+  const [selectedCrdDb, setSelectedCrdDb] = useState<DeployedDatabase | null>(null);
   const [activeDbTab, setActiveDbTab] = useState<'config' | 'monitoring' | 'budget'>('config');
 
   // Deployed active databases list state & refresh loader
@@ -91,8 +93,14 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
     onTitleChange?.(`${item.name} Engine Catalog`);
   };
 
-  // Flow B: Click Active Running DB in Table -> Open Management Database Console
+  // Flow B: Click Active Running DB in Table -> Open Management Database Console or CRD Console
   const handleOpenFastManagement = (db: DeployedDatabase) => {
+    if (isCrdResource(db)) {
+      setSelectedCrdDb(db);
+      onTitleChange?.(`CRD Resource: ${db.name}`);
+      return;
+    }
+
     const dbEngine = (db.engine_type || '').toLowerCase();
     const found = CATALOG_ITEMS.find((c) => (c.engine_type || '').toLowerCase() === dbEngine) || CATALOG_ITEMS[0];
     const customItem = {
@@ -109,6 +117,7 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
     setSelectedEngineOverviewItem(null);
     setSelectedManagementCatalogItem(null);
     setSelectedManagementDb(null);
+    setSelectedCrdDb(null);
     onTitleChange?.(null);
   };
 
@@ -123,12 +132,9 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
     { id: 'relational', label: 'Relational Databases', count: 4 },
     { id: 'nosql', label: 'NoSQL / Non-Relational Databases', count: 4 },
     { id: 'vector', label: 'Vector Databases', count: 4 },
-    { id: 'inmemory', label: 'In-Memory Databases', count: 3 }, // 3 In-Memory engines (Redis, KeyDB, Dragonfly)
+    { id: 'inmemory', label: 'In-Memory Databases', count: 3 },
     { id: 'timeseries', label: 'Time-Series Databases', count: 4 },
   ];
-
-  // Fully ready databases (No "Under Development" badge)
-  const readyEngines = ['postgresql', 'mongodb', 'redis'];
 
   // Render Engine Overview Page if engine card clicked
   if (selectedEngineOverviewItem) {
@@ -143,7 +149,21 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
     );
   }
 
-  // Render Running Instance Management Console if running instance clicked
+  // Render Dedicated CRD Management Console if CRD clicked
+  if (selectedCrdDb) {
+    return (
+      <CrdManagementConsolePage
+        db={selectedCrdDb}
+        onBack={handleBackToCatalog}
+        onDeleteSuccess={(deletedId) => {
+          setDeployedDbs((prev) => prev.filter((d) => d.id !== deletedId));
+          handleBackToCatalog();
+        }}
+      />
+    );
+  }
+
+  // Render Running Instance Management Console if running Helm instance clicked
   if (selectedManagementCatalogItem) {
     return (
       <DatabaseManagementCatalogPage
@@ -159,86 +179,8 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
 
   return (
     <div className="space-y-10 text-slate-100">
-      {/* 1. Database Technologies Catalog Section */}
-      <section className="space-y-6">
-        <div>
-          <h3 className="text-lg font-bold text-white">Database Engine Catalog</h3>
-          <p className="text-xs text-slate-400">Select a category or database engine below to quickly provision a new instance</p>
-        </div>
-
-        {categories.map((cat) => {
-          const items = CATALOG_ITEMS.filter((item) => item.category === cat.id);
-          return (
-            <div key={cat.id} className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-brand-sky"></span>
-                  {cat.label}
-                </h4>
-                <span className="text-xs text-slate-500 font-medium">{items.length} Engines Available</span>
-              </div>
-
-              {/* 4 CARDS PER ROW SQUARE GRID */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                {items.map((item) => {
-                  const mono = getEngineMonogram(item.engine_type);
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => handleOpenCatalogItem(item)}
-                      className="bg-bg-card border border-accent-darkBorder rounded-2xl p-4 hover:border-brand-sky hover:shadow-xl hover:shadow-brand-sky/10 transition-all cursor-pointer group flex flex-col justify-between relative overflow-hidden min-h-[200px]"
-                    >
-
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <div className={`w-11 h-11 rounded-xl ${mono.bg} ${mono.border} border flex items-center justify-center font-mono font-black text-sm tracking-wider ${mono.text} ${mono.glow} shadow-md group-hover:scale-105 group-hover:border-brand-sky/60 transition-all`}>
-                            {mono.code}
-                          </div>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-bg-main text-slate-300 border border-accent-darkBorder">
-                            {item.badge}
-                          </span>
-                        </div>
-                        <h5 className="font-bold text-white text-base group-hover:text-brand-sky transition-colors">
-                          {item.name}
-                        </h5>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                          {item.description}
-                        </p>
-                      </div>
-
-                      {/* STATIC FOOTER FOR VERSION */}
-                      <div className="mt-4 pt-3 border-t border-accent-darkBorder/60 flex items-center justify-between text-xs font-semibold text-slate-400">
-                        <span>Version: {item.versions[0]}</span>
-                        <span className="text-brand-sky text-[11px] font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-                          Catalog &rarr;
-                        </span>
-                      </div>
-
-                      {/* HOVER PLUS BUTTON FOR QUICK CREATION */}
-                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onNavigateCreate(item.engine_type);
-                          }}
-                          title="Provision Database Instance"
-                          className="bg-brand-blue hover:bg-brand-blue/90 text-white p-1.5 rounded-lg shadow-lg border border-brand-sky/40 transition-colors"
-                        >
-                          <Plus className="w-4 h-4 text-white" />
-                        </button>
-                      </div>
-
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </section>
-
-      {/* 2. Deployed Active Databases List Section */}
-      <section className="space-y-4 pt-6 border-t border-accent-darkBorder">
+      {/* 1. TOP SECTION: Deployed Active Databases List */}
+      <section className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-lg font-bold text-white">Active Deployed Database Instances</h3>
@@ -454,6 +396,84 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
             </table>
           </div>
         )}
+      </section>
+
+      {/* 2. BOTTOM SECTION: Database Technologies Catalog Section */}
+      <section className="space-y-6 pt-6 border-t border-accent-darkBorder">
+        <div>
+          <h3 className="text-lg font-bold text-white">Database Engine Catalog</h3>
+          <p className="text-xs text-slate-400">Select a category or database engine below to quickly provision a new instance</p>
+        </div>
+
+        {categories.map((cat) => {
+          const items = CATALOG_ITEMS.filter((item) => item.category === cat.id);
+          return (
+            <div key={cat.id} className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-brand-sky"></span>
+                  {cat.label}
+                </h4>
+                <span className="text-xs text-slate-500 font-medium">{items.length} Engines Available</span>
+              </div>
+
+              {/* 4 CARDS PER ROW SQUARE GRID */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                {items.map((item) => {
+                  const mono = getEngineMonogram(item.engine_type);
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleOpenCatalogItem(item)}
+                      className="bg-bg-card border border-accent-darkBorder rounded-2xl p-4 hover:border-brand-sky hover:shadow-xl hover:shadow-brand-sky/10 transition-all cursor-pointer group flex flex-col justify-between relative overflow-hidden min-h-[200px]"
+                    >
+
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className={`w-11 h-11 rounded-xl ${mono.bg} ${mono.border} border flex items-center justify-center font-mono font-black text-sm tracking-wider ${mono.text} ${mono.glow} shadow-md group-hover:scale-105 group-hover:border-brand-sky/60 transition-all`}>
+                            {mono.code}
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-bg-main text-slate-300 border border-accent-darkBorder">
+                            {item.badge}
+                          </span>
+                        </div>
+                        <h5 className="font-bold text-white text-base group-hover:text-brand-sky transition-colors">
+                          {item.name}
+                        </h5>
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                          {item.description}
+                        </p>
+                      </div>
+
+                      {/* STATIC FOOTER FOR VERSION */}
+                      <div className="mt-4 pt-3 border-t border-accent-darkBorder/60 flex items-center justify-between text-xs font-semibold text-slate-400">
+                        <span>Version: {item.versions[0]}</span>
+                        <span className="text-brand-sky text-[11px] font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
+                          Catalog &rarr;
+                        </span>
+                      </div>
+
+                      {/* HOVER PLUS BUTTON FOR QUICK CREATION */}
+                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNavigateCreate(item.engine_type);
+                          }}
+                          title="Provision Database Instance"
+                          className="bg-brand-blue hover:bg-brand-blue/90 text-white p-1.5 rounded-lg shadow-lg border border-brand-sky/40 transition-colors"
+                        >
+                          <Plus className="w-4 h-4 text-white" />
+                        </button>
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </section>
     </div>
   );

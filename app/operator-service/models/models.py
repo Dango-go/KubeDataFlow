@@ -5,13 +5,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from core.database import Base
 
 
-class ClusterDB(Base):
-    __tablename__ = "clusters"
+class ManifestsAndCRDs(Base):
+    __tablename__ = "manifests_and_crds"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    provider_name = Column(String, nullable=False)
-    cluster_name = Column(String, nullable=False)
-    api_server_url = Column(String, nullable=False)  # The URL from cloud cluster or yourself cluster
-    token = Column(String, nullable=True)  # The token from cloud cluster or yourself cluster
+    manifests = Column(JSON, nullable=False)
+    crds = Column(JSON, nullable=False)
+    api_server_url = Column(String, nullable=False) 
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
