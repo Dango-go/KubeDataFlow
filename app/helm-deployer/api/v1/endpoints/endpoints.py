@@ -118,7 +118,6 @@ async def deploy_chart(
     request: ApplyRequest,
     db: AsyncSession = Depends(db_session)
 ):
-
     print(f"[HELM-DEPLOYER] Received request: cluster={request.cluster_name}, url={request.api_server_url}, ca_len={len(request.ca_cert_data or '')}, token_len={len(request.token or '')}, token_prefix={request.token[:15] if request.token else 'EMPTY'}")
     
     service = HelmService(db_session=db)

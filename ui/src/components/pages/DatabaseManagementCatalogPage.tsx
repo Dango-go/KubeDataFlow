@@ -213,45 +213,14 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
   const [topScaleNotification, setTopScaleNotification] = useState<string | null>(null);
 
   // Live Config Tuning & custom-values.yaml Terminal Editor State
-  const defaultYamlContent = `# custom-values.yaml — Live Runtime Engine Configuration Overrides
-# Target Database: ${selectedInstance?.name || 'prod-postgres-main'} (${selectedInstance?.namespace || 'databases'})
-# Service Endpoint: PUT /api/v1/databases/${selectedInstance?.id || '1'}/config
-
-postgresql:
-  max_connections: 500
-  shared_buffers: "2GB"
-  effective_cache_size: "6GB"
-  maintenance_work_mem: "512MB"
-  work_mem: "32MB"
-  min_wal_size: "1GB"
-  max_wal_size: "4GB"
-  checkpoint_completion_target: 0.9
-  wal_buffers: "16MB"
-  default_statistics_target: 100
-  random_page_cost: 1.1
-  effective_io_concurrency: 200
-
-auth:
-  enablePostgreSQLPassword: true
-  database: "app_production"
-
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-    interval: "30s"
-`;
-
-  const [customValuesYaml, setCustomValuesYaml] = useState<string>(defaultYamlContent);
+  const [customValuesYaml, setCustomValuesYaml] = useState<string>('');
   const [yamlConfigStatus, setYamlConfigStatus] = useState<'idle' | 'applying' | 'success' | 'error'>('idle');
   const [yamlConfigNotification, setYamlConfigNotification] = useState<string | null>(null);
   const [isUninstallingRelease, setIsUninstallingRelease] = useState<boolean>(false);
 
   // Custom File Management State
-  const [activeYamlFileName, setActiveYamlFileName] = useState<string>('custom-values.yaml');
-  const [mgmtUserCustomFiles, setMgmtUserCustomFiles] = useState<Array<{ name: string; content: string }>>([
-    { name: 'custom-values.yaml', content: defaultYamlContent }
-  ]);
+  const [activeYamlFileName, setActiveYamlFileName] = useState<string>('');
+  const [mgmtUserCustomFiles, setMgmtUserCustomFiles] = useState<Array<{ name: string; content: string }>>([]);
   const [showMgmtAddCustomFileModal, setShowMgmtAddCustomFileModal] = useState<boolean>(false);
   const [mgmtNewCustomFileName, setMgmtNewCustomFileName] = useState<string>('my-custom-values.yaml');
 
@@ -324,20 +293,61 @@ metrics:
     setMgmtNewCustomFileName('');
   };
 
+  const handleYamlChange = (newVal: string) => {
+    setCustomValuesYaml(newVal);
+    if (activeYamlFileName) {
+      setMgmtUserCustomFiles((prev) =>
+        prev.map((f) => (f.name === activeYamlFileName ? { ...f, content: newVal } : f))
+      );
+    }
+  };
+
   const handleApplyCustomYamlConfig = async () => {
+    if (!activeYamlFileName && !customValuesYaml.trim()) {
+      setYamlConfigNotification('⚠️ No configuration file opened. Please click "Open Chart File" or "Add Custom File" first.');
+      setTimeout(() => setYamlConfigNotification(null), 4000);
+      return;
+    }
+    const fileName = activeYamlFileName;
+    const releaseName = selectedInstance?.name || item.name || 'my-db';
+    const clusterName = selectedInstance?.cluster_name || 'test-eks';
+    const namespace = selectedInstance?.namespace || 'databases';
+    const chartName = (selectedInstance?.engine_type || item.engine_type || 'postgresql').toLowerCase();
+
     setYamlConfigStatus('applying');
-    setYamlConfigNotification(
-      `[PUT /api/v1/databases/${selectedInstance?.id || '1'}/config]: Transmitted custom-values.yaml to helm-deployer & operator-service (helm upgrade --install)...`
-    );
-    await new Promise((res) => setTimeout(res, 1400));
-    setYamlConfigStatus('success');
-    setYamlConfigNotification(
-      `✓ custom-values.yaml configuration successfully applied for ${selectedInstance?.name || 'prod-postgres-main'}! StatefulSet updated without downtime.`
-    );
-    setTimeout(() => {
-      setYamlConfigStatus('idle');
-      setYamlConfigNotification(null);
-    }, 5000);
+    setYamlConfigNotification(`[Helm Upgrade]: ${fileName ? `Saving ${fileName} and ` : ''}executing helm upgrade --install for "${releaseName}" on cluster "${clusterName}"...`);
+
+    try {
+      // 1. Save modified file to backend if active file exists
+      if (fileName) {
+        await apiClient.saveHelmFile(releaseName, fileName, customValuesYaml);
+      }
+
+      // 2. Trigger helm apply with this target values file
+      await apiClient.applyHelmRelease({
+        cluster_name: clusterName,
+        release_name: releaseName,
+        chart_name: chartName,
+        namespace: namespace,
+        target_values_file: fileName || undefined
+      });
+
+      setYamlConfigStatus('success');
+      setYamlConfigNotification(
+        `✓ Helm release "${releaseName}" upgraded successfully${fileName ? ` with ${fileName}` : ''}! StatefulSet rolling update initiated.`
+      );
+      setTimeout(() => {
+        setYamlConfigStatus('idle');
+        setYamlConfigNotification(null);
+      }, 6000);
+    } catch (err: any) {
+      setYamlConfigStatus('error');
+      setYamlConfigNotification(`❌ Helm upgrade failed: ${err.message}`);
+      setTimeout(() => {
+        setYamlConfigStatus('idle');
+        setYamlConfigNotification(null);
+      }, 7000);
+    }
   };
 
   const handleUninstallRelease = async () => {
@@ -533,9 +543,20 @@ metrics:
   ];
 
   return (
-    <div className="space-y-8 text-slate-100">
+    <div className="space-y-6 text-slate-100">
       
-      {/* Header with Back Button and Instance Details */}
+      {/* TOP NAVIGATION BAR: Back to Catalog Button */}
+      <div className="flex items-center justify-between gap-4">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 hover:bg-accent-darkHover rounded-xl text-slate-300 hover:text-white transition-all flex items-center gap-2 text-xs font-bold border border-accent-darkBorder bg-bg-card shadow-sm group"
+        >
+          <ArrowLeft className="w-4 h-4 text-brand-sky group-hover:-translate-x-0.5 transition-transform" />
+          <span>Back to Catalog</span>
+        </button>
+      </div>
+
+      {/* Header with Instance Details Banner */}
       {(() => {
         const clusterObj = clustersList.find(
           c => c.name === selectedInstance?.cluster_name || c.id === selectedInstance?.cluster_name
@@ -544,80 +565,58 @@ metrics:
         
         let providerBadgeClass = 'bg-slate-800/80 text-slate-300 border-slate-700';
         if (providerName.includes('AWS')) {
-          providerBadgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+          providerBadgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
         } else if (providerName.includes('GCP')) {
-          providerBadgeClass = 'bg-sky-500/10 text-sky-400 border-sky-500/30';
+          providerBadgeClass = 'bg-sky-500/15 text-sky-400 border-sky-500/30';
         } else if (providerName.includes('Azure')) {
-          providerBadgeClass = 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+          providerBadgeClass = 'bg-blue-500/15 text-blue-400 border-blue-500/30';
         } else if (providerName.includes('DigitalOcean')) {
-          providerBadgeClass = 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30';
+          providerBadgeClass = 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30';
         }
 
         return (
           <div className="bg-bg-card border border-accent-darkBorder rounded-2xl p-6 shadow-xl flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6">
-            {/* LEFT SECTION: Back Button, Engine Icon, Release Name, Cluster & Provider Badge */}
-            <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
-              <button
-                onClick={onBack}
-                className="p-2.5 hover:bg-accent-darkHover rounded-xl text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold border border-accent-darkBorder shrink-0"
-              >
-                <ArrowLeft className="w-4 h-4" /> Back to Catalog
-              </button>
-              
-              <div className="h-10 w-px bg-slate-800 hidden sm:block"></div>
-              
-              <div className="flex items-center gap-3.5">
-                {(() => {
-                  const mono = getEngineMonogram(selectedInstance?.engine_type || item.engine_type);
-                  return (
-                    <div className={`w-12 h-12 rounded-xl ${mono.bg} ${mono.border} border flex items-center justify-center font-mono font-black text-base tracking-wider ${mono.text} ${mono.glow} shadow-md shrink-0`}>
-                      {mono.code}
-                    </div>
-                  );
-                })()}
+            {/* LEFT SECTION: Instance Name & Details (Aligned left, No PG icon) */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  {selectedInstance?.name || 'prod-postgres-main'}
+                </h2>
                 
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="text-xl font-black text-white tracking-tight">
-                      {selectedInstance?.name || 'prod-postgres-main'}
-                    </span>
-                    
-                    <span className="text-[11px] font-mono font-black px-2.5 py-0.5 rounded-md bg-brand-blue/25 text-brand-sky border border-brand-sky/40 uppercase shadow-sm">
-                      {selectedInstance?.engine_type?.toUpperCase() || 'POSTGRESQL'}
-                    </span>
-                    
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/70 text-emerald-400 border border-emerald-500/30">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      {selectedInstance?.status || 'running'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 text-xs font-mono text-slate-400 flex-wrap">
-                    <span className="text-slate-500">cluster:</span>
-                    <strong className="text-slate-200 font-bold bg-bg-main px-2 py-0.5 rounded border border-slate-800">
-                      {selectedInstance?.cluster_name || 'test-eks'}
-                    </strong>
-                    
-                    <span className="text-slate-600">•</span>
-                    
-                    <span className="text-slate-500">provider:</span>
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded border ${providerBadgeClass}`}>
-                      <Cloud className="w-3 h-3" />
-                      {providerName}
-                    </span>
-                    
-                    {clusterObj?.region && (
-                      <span className="text-[11px] text-slate-400 font-sans">
-                        ({clusterObj.region})
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <span className="text-xs font-mono font-black px-3 py-1 rounded-lg bg-brand-blue/30 text-brand-sky border border-brand-sky/40 uppercase shadow-sm">
+                  {selectedInstance?.engine_type?.toUpperCase() || 'POSTGRESQL'}
+                </span>
+                
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/40">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  {selectedInstance?.status || 'running'}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2.5 text-sm font-mono text-slate-400 flex-wrap">
+                <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">cluster:</span>
+                <strong className="text-slate-100 font-bold bg-bg-main px-2.5 py-1 rounded-lg border border-slate-800 text-xs">
+                  {selectedInstance?.cluster_name || 'test-eks'}
+                </strong>
+                
+                <span className="text-slate-600 font-bold">•</span>
+                
+                <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">provider:</span>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border ${providerBadgeClass}`}>
+                  <Cloud className="w-3.5 h-3.5" />
+                  {providerName}
+                </span>
+                
+                {clusterObj?.region && (
+                  <span className="text-xs text-slate-400 font-sans font-medium">
+                    ({clusterObj.region})
+                  </span>
+                )}
               </div>
             </div>
 
             {/* RIGHT SECTION: Action Buttons (Terminal, Monitoring, Cost) */}
-            <div className="flex items-center gap-2.5 w-full xl:w-auto justify-end flex-wrap sm:flex-nowrap">
+            <div className="flex items-center gap-3 w-full xl:w-auto justify-end flex-wrap sm:flex-nowrap">
               {/* TERMINAL BUTTON */}
               <button
                 onClick={() => setShowTerminalModal(true)}
@@ -911,10 +910,10 @@ metrics:
             </div>
             <div>
               <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-                2. Live Config Tuning & custom-values.yaml Terminal Editor
+                2. Live Config Tuning & YAML Terminal Editor
               </h4>
               <p className="text-xs text-slate-400">
-                Modify engine parameters in custom-values.yaml for real-time hot-reload / rolling deployment
+                Modify engine parameters and chart values for real-time hot-reload / rolling deployment
               </p>
             </div>
           </div>
@@ -937,7 +936,23 @@ metrics:
             </button>
 
             <button
-              onClick={() => setCustomValuesYaml(defaultYamlContent)}
+              onClick={async () => {
+                if (!activeYamlFileName) {
+                  setYamlConfigNotification('No active file opened to reset.');
+                  setTimeout(() => setYamlConfigNotification(null), 3000);
+                  return;
+                }
+                const releaseName = selectedInstance?.name || item.name || 'my-db';
+                try {
+                  const original = await apiClient.getHelmFile(releaseName, activeYamlFileName);
+                  handleYamlChange(original);
+                  setYamlConfigNotification(`Reset '${activeYamlFileName}' to original chart defaults.`);
+                  setTimeout(() => setYamlConfigNotification(null), 3000);
+                } catch {
+                  setYamlConfigNotification(`Loaded defaults for '${activeYamlFileName}'.`);
+                  setTimeout(() => setYamlConfigNotification(null), 3000);
+                }
+              }}
               className="px-3.5 py-2 rounded-xl bg-bg-main hover:bg-slate-800 text-slate-300 hover:text-white border border-accent-darkBorder text-xs font-bold transition-all flex items-center gap-1.5"
             >
               <History className="w-3.5 h-3.5 text-slate-400" />
@@ -946,7 +961,8 @@ metrics:
 
             <button
               onClick={() => {
-                setYamlConfigNotification(`[Template]: Rendered Helm template manifest successfully against ${activeYamlFileName}!`);
+                const target = activeYamlFileName || 'manifest';
+                setYamlConfigNotification(`[Template]: Rendered Helm template manifest successfully against ${target}!`);
                 setTimeout(() => setYamlConfigNotification(null), 4000);
               }}
               className="px-3.5 py-2 rounded-xl bg-bg-main hover:bg-slate-800 text-slate-300 hover:text-white border border-accent-darkBorder text-xs font-bold transition-all flex items-center gap-1.5"
@@ -1002,29 +1018,35 @@ metrics:
           <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
             {/* Dynamic File Tabs */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              {mgmtUserCustomFiles.map((file) => {
-                const isActive = file.name === activeYamlFileName;
-                return (
-                  <button
-                    key={file.name}
-                    onClick={() => {
-                      setActiveYamlFileName(file.name);
-                      setCustomValuesYaml(file.content);
-                    }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 border ${
-                      isActive
-                        ? 'bg-brand-blue/20 text-white border-brand-sky/50 shadow-md shadow-brand-blue/10'
-                        : 'bg-bg-main text-slate-400 hover:text-slate-200 border-accent-darkBorder hover:bg-slate-800'
-                    }`}
-                  >
-                    <FileText className={`w-3.5 h-3.5 ${isActive ? 'text-brand-sky' : 'text-slate-500'}`} />
-                    <span>{file.name}</span>
-                    {isActive && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-sky animate-pulse"></span>
-                    )}
-                  </button>
-                );
-              })}
+              {mgmtUserCustomFiles.length === 0 ? (
+                <span className="text-xs text-slate-500 italic py-1 px-1">
+                  No configuration file opened. Click "Open Chart File" or "Add Custom File" above to begin editing.
+                </span>
+              ) : (
+                mgmtUserCustomFiles.map((file) => {
+                  const isActive = file.name === activeYamlFileName;
+                  return (
+                    <button
+                      key={file.name}
+                      onClick={() => {
+                        setActiveYamlFileName(file.name);
+                        setCustomValuesYaml(file.content);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 border ${
+                        isActive
+                          ? 'bg-brand-blue/20 text-white border-brand-sky/50 shadow-md shadow-brand-blue/10'
+                          : 'bg-bg-main text-slate-400 hover:text-slate-200 border-accent-darkBorder hover:bg-slate-800'
+                      }`}
+                    >
+                      <FileText className={`w-3.5 h-3.5 ${isActive ? 'text-brand-sky' : 'text-slate-500'}`} />
+                      <span>{file.name}</span>
+                      {isActive && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand-sky animate-pulse"></span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
             </div>
 
             <span className="text-[11px] text-slate-400 font-mono hidden sm:inline-flex items-center gap-1.5 bg-bg-main px-2.5 py-1 rounded-lg border border-accent-darkBorder">
@@ -1035,9 +1057,9 @@ metrics:
 
           <YamlCodeEditor
             value={customValuesYaml}
-            onChange={(newVal) => setCustomValuesYaml(newVal)}
+            onChange={handleYamlChange}
             minHeight="340px"
-            placeholder="# Type or edit YAML configuration values here..."
+            placeholder="# No configuration file opened. Click 'Open Chart File' or 'Add Custom File' to inspect or tune engine configuration."
           />
         </div>
       </section>

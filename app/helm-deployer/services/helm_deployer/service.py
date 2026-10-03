@@ -155,12 +155,21 @@ class HelmService:
 
         # install or upgrade chart
         try:
+            values_file_path = None
+            if target_values_file:
+                cand = self.chart_manager.base_temp_dir / release_name / target_values_file
+                if not cand.exists():
+                    matches = list((self.chart_manager.base_temp_dir / release_name).glob(f"**/{target_values_file}"))
+                    if matches:
+                        cand = matches[0]
+                values_file_path = str(cand) if cand.exists() else target_values_file
+
             result = await self.helm_runner.upgrade_install(
                 release_name=release_name,
                 chart_path=str(chart_path),
                 kubeconfig_path=str(kubeconfig_path),
                 namespace=namespace,
-                values_file=target_values_file,
+                values_file=values_file_path,
                 wait=False
             )
 
