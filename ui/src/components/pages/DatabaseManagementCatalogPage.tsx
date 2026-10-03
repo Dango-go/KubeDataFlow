@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DatabaseCatalogItem, DeployedDatabase, K8sCluster } from '../../types';
 import { INITIAL_DEPLOYED_DBS, getEngineMonogram } from '../../services/mockData';
 import { apiClient } from '../../services/apiClient';
+import { DATABASE_CHARTS_CATALOG } from '../../services/chartCatalog';
 import { YamlCodeEditor } from '../common/YamlCodeEditor';
 import { 
   ArrowLeft, 
@@ -231,14 +232,71 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
   const [isLoadingChartFiles, setIsLoadingChartFiles] = useState<boolean>(false);
   const [isLoadingFileContent, setIsLoadingFileContent] = useState<boolean>(false);
 
+  // Auto-load chart values.yaml on initial page mount
+  useEffect(() => {
+    let isMounted = true;
+    const loadInitialChart = async () => {
+      const releaseName = selectedInstance?.name || item.name || 'my-db';
+      try {
+        let files = await apiClient.getHelmFiles(releaseName);
+        if (!files || files.length === 0) {
+          const engineType = (selectedInstance?.engine_type || item.engine_type || 'postgresql').toLowerCase();
+          const foundOption = DATABASE_CHARTS_CATALOG.find(c => c.engine_type === engineType && c.id.includes('bitnami')) ||
+                              DATABASE_CHARTS_CATALOG.find(c => c.engine_type === engineType) ||
+                              DATABASE_CHARTS_CATALOG[0];
+          const chartNameOnly = foundOption.chart_name.includes('/') ? foundOption.chart_name.split('/')[1] : foundOption.chart_name;
+          await apiClient.pullHelmChart({
+            chart_repo_url: foundOption.chart_repo_url,
+            chart_name: chartNameOnly,
+            chart_version: foundOption.default_version || '',
+            release_name: releaseName
+          });
+          files = await apiClient.getHelmFiles(releaseName);
+        }
+
+        if (isMounted && files && files.length > 0) {
+          setChartFilesList(files);
+          // If no files opened yet, open values.yaml
+          const targetValuesFile = files.find(f => f.endsWith('values.yaml')) || files[0];
+          const content = await apiClient.getHelmFile(releaseName, targetValuesFile);
+          const fileName = targetValuesFile.split('/').pop() || targetValuesFile;
+          setMgmtUserCustomFiles([{ name: fileName, content }]);
+          setActiveYamlFileName(fileName);
+          setCustomValuesYaml(content);
+        }
+      } catch (err) {
+        console.warn('Initial chart auto-load completed or skipped:', err);
+      }
+    };
+    loadInitialChart();
+    return () => { isMounted = false; };
+  }, [selectedInstance?.name]);
+
   const handleOpenChartFilesModal = async () => {
     setShowOpenChartFileModal(true);
     setChartFileSearchQuery('');
     setIsLoadingChartFiles(true);
     try {
       const releaseName = selectedInstance?.name || item.name || 'my-db';
-      const files = await apiClient.getHelmFiles(releaseName);
-      setChartFilesList(files);
+      let files = await apiClient.getHelmFiles(releaseName);
+
+      // If no files unpacked on server yet, automatically pull the chart
+      if (!files || files.length === 0) {
+        const engineType = (selectedInstance?.engine_type || item.engine_type || 'postgresql').toLowerCase();
+        const foundOption = DATABASE_CHARTS_CATALOG.find(c => c.engine_type === engineType && c.id.includes('bitnami')) ||
+                            DATABASE_CHARTS_CATALOG.find(c => c.engine_type === engineType) ||
+                            DATABASE_CHARTS_CATALOG[0];
+        const chartNameOnly = foundOption.chart_name.includes('/') ? foundOption.chart_name.split('/')[1] : foundOption.chart_name;
+        await apiClient.pullHelmChart({
+          chart_repo_url: foundOption.chart_repo_url,
+          chart_name: chartNameOnly,
+          chart_version: foundOption.default_version || '',
+          release_name: releaseName
+        });
+        files = await apiClient.getHelmFiles(releaseName);
+      }
+
+      setChartFilesList(files || []);
     } catch (err) {
       console.warn('Failed to load chart files:', err);
       setChartFilesList([]);
