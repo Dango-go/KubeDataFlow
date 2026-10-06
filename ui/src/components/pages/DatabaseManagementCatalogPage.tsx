@@ -641,18 +641,24 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
                   {selectedInstance?.name || 'prod-postgres-main'}
                 </h2>
                 
-                <span className="text-xs font-mono font-black px-3 py-1 rounded-lg bg-brand-blue/30 text-brand-sky border border-brand-sky/40 uppercase shadow-sm">
-                  {selectedInstance?.engine_type?.toUpperCase() || 'POSTGRESQL'}
-                </span>
+                <div className="flex items-center gap-1.5 font-mono">
+                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">database:</span>
+                  <span className="text-xs font-mono font-black px-2.5 py-1 rounded-lg bg-brand-blue/30 text-brand-sky border border-brand-sky/40 uppercase shadow-sm">
+                    {selectedInstance?.engine_type?.toUpperCase() || 'POSTGRESQL'}
+                  </span>
+                </div>
                 
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/40">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  {selectedInstance?.status || 'running'}
-                </span>
+                <div className="flex items-center gap-1.5 font-mono">
+                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">status:</span>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/40">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    {selectedInstance?.status || 'running'}
+                  </span>
+                </div>
               </div>
               
               <div className="flex items-center gap-2.5 text-sm font-mono text-slate-400 flex-wrap">
-                <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">cluster:</span>
+                <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">cluster name:</span>
                 <strong className="text-slate-100 font-bold bg-bg-main px-2.5 py-1 rounded-lg border border-slate-800 text-xs">
                   {selectedInstance?.cluster_name || 'test-eks'}
                 </strong>

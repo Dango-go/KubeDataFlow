@@ -38,3 +38,4 @@ class CatalogService:
             "chart_version": version_entity.chart_version
         }
 
+

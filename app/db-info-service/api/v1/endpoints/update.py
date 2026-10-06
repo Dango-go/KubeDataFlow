@@ -9,11 +9,19 @@ from core.exceptions import EngineNotFoundError, VersionNotSupportedError
 
 router = APIRouter(prefix="/api/v1/info", tags=["catalog"])
 
+# POST Update list
 @router.post("/update_clusters")
 async def update_clusters(
     db: AsyncSession = Depends(get_db)
 ):
-    """Update the version of a Helm chart."""
+    service = CatalogService(db)
+    return await None
+
+# GET pods of reliase
+@router.post("/pods_list")
+async def pods_list(
+    db: AsyncSession = Depends(get_db)
+):
     service = CatalogService(db)
     return await None
 
