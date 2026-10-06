@@ -61,7 +61,7 @@ export const DATABASE_CHARTS_CATALOG: DatabaseChartOption[] = [
     description: 'Standard packaged Bitnami Helm chart for PostgreSQL Primary/Read-Replica deployment.',
     tags: ['Standalone Chart', 'Bitnami', 'Primary-Replica'],
     icon_url: 'https://raw.githubusercontent.com/github/explore/80688e429a7d4ef2fca1e82350fe8e3517d3494d/topics/postgresql/postgresql.png',
-    default_values_yaml: `image:\n  registry: docker.io\n  repository: bitnami/postgresql\n  tag: "16"\nglobal:\n  postgresql:\n    auth:\n      postgresPassword: "DB_ADMIN_PASSWORD"\n      database: "appdb"\nprimary:\n  podAntiAffinityPreset: soft\n  persistence:\n    enabled: true\n    size: 20Gi\n  resources:\n    requests:\n      cpu: 500m\n      memory: 512Mi\n    limits:\n      cpu: 1000m\n      memory: 1Gi\nreadReplicas:\n  replicaCount: 1\n  podAntiAffinityPreset: soft`
+    default_values_yaml: `image:\n  registry: docker.io\n  repository: bitnami/postgresql\n  tag: "16"\nglobal:\n  postgresql:\n    auth:\n      postgresPassword: "DB_ADMIN_PASSWORD"\n      database: "appdb"\nprimary:\n  podAntiAffinityPreset: soft\n  persistence:\n    enabled: true\n    size: 20Gi\n  resources:\n    requests:\n      cpu: 500m\n      memory: 512Mi\n    limits:\n      cpu: 1000m\n      memory: 1Gi\nreadReplicas:\n  replicaCount: 1\n  podAntiAffinityPreset: soft\nmetrics:\n  enabled: false`
   },
 
   // ==========================================

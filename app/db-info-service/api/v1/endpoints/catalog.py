@@ -7,7 +7,7 @@ from api.v1.endpoints.schemas import EngineSummaryResponse, ChartInfoResponse
 from services.catalog_manager.service import CatalogService
 from core.exceptions import EngineNotFoundError, VersionNotSupportedError
 
-router = APIRouter(prefix="/api/v1/catalog", tags=["catalog"])
+router = APIRouter(prefix="/api/v1/info", tags=["catalog"])
 
 
 # GET /api/v1/catalog - Get list of active DB engines with supported versions for catalog UI

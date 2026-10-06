@@ -5,7 +5,7 @@ from api.dependencies import get_db
 from api.v1.endpoints.schemas import EngineCreateRequest
 from services.catalog_manager.repository import CatalogRepository
 
-router = APIRouter(prefix="/api/v1/admin/catalog", tags=["admin-catalog"])
+router = APIRouter(prefix="/api/v1/info", tags=["admin-catalog"])
 
 
 # POST /api/v1/admin/catalog/engines - Add new DB engine to catalog

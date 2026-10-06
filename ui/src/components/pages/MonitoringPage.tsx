@@ -186,7 +186,8 @@ export const MonitoringPage: React.FC = () => {
       unit: '% Cores',
       icon: Cpu,
       color: 'text-sky-400',
-      current: '24.8%'
+      current: '24.8%',
+      isUniversal: true
     },
     {
       id: 'memory_usage',
@@ -196,7 +197,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'MB / GB',
       icon: HardDrive,
       color: 'text-purple-400',
-      current: selectedDb.memory_usage_mb ? `${selectedDb.memory_usage_mb} MB` : '4,096 MB'
+      current: selectedDb.memory_usage_mb ? `${selectedDb.memory_usage_mb} MB` : '4,096 MB',
+      isUniversal: true
     },
     {
       id: 'qps_operations',
@@ -206,7 +208,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'req/sec',
       icon: Zap,
       color: 'text-amber-400',
-      current: '1,420 qps'
+      current: '1,420 qps',
+      isUniversal: true
     },
     {
       id: 'query_latency',
@@ -216,7 +219,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'ms',
       icon: Clock,
       color: 'text-rose-400',
-      current: '2.4 ms'
+      current: '2.4 ms',
+      isUniversal: true
     },
     {
       id: 'active_connections',
@@ -226,7 +230,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'sockets',
       icon: Server,
       color: 'text-indigo-400',
-      current: '34 / 200'
+      current: '34 / 200',
+      isUniversal: true
     },
     {
       id: 'cache_hit_ratio',
@@ -246,7 +251,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'IOPS / MBps',
       icon: Activity,
       color: 'text-emerald-400',
-      current: '480 IOPS'
+      current: '480 IOPS',
+      isUniversal: true
     },
     {
       id: 'disk_growth',
@@ -256,7 +262,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'GB / %',
       icon: HardDrive,
       color: 'text-blue-400',
-      current: selectedDb.storage_gb ? `${Math.round(selectedDb.storage_gb * 0.42)} / ${selectedDb.storage_gb} GB` : '21 / 50 GB'
+      current: selectedDb.storage_gb ? `${Math.round(selectedDb.storage_gb * 0.42)} / ${selectedDb.storage_gb} GB` : '21 / 50 GB',
+      isUniversal: true
     },
     {
       id: 'wal_write_volume',
@@ -276,7 +283,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'KB/s / MB/s',
       icon: Wifi,
       color: 'text-teal-400',
-      current: '12.8 MB/s'
+      current: '12.8 MB/s',
+      isUniversal: true
     },
     {
       id: 'replication_lag',
@@ -316,7 +324,8 @@ export const MonitoringPage: React.FC = () => {
       unit: 'errors/s',
       icon: AlertTriangle,
       color: 'text-red-400',
-      current: '0.00 /s'
+      current: '0.00 /s',
+      isUniversal: true
     }
   ];
 
@@ -757,9 +766,16 @@ export const MonitoringPage: React.FC = () => {
                       <IconComponent className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="font-extrabold text-sm text-white block">
-                        {chart.title}
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-sm text-white">
+                          {chart.title}
+                        </span>
+                        {chart.isUniversal && (
+                          <span className="text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 tracking-wider shadow-sm">
+                            Universal
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-slate-400">
                         {chart.subtitle}
                       </span>

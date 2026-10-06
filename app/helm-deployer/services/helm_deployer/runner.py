@@ -19,7 +19,7 @@ class HelmRunner:
 
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(), timeout=timeout
-            )
+           )
 
             stdout = stdout_bytes.decode("utf-8").strip()
             stderr = stderr_bytes.decode("utf-8").strip()
