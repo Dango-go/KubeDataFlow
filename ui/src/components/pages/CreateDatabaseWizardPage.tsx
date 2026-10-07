@@ -119,14 +119,6 @@ const HELM_CHART_FILES: Record<string, HelmChartFileItem[]> = {
   ]
 };
 
-// Default Custom Resource Manifests for Mode 2 (Operator Service CRD)
-const DEFAULT_CRD_MANIFESTS: Record<string, string> = {
-  postgresql: `apiVersion: postgresql.cnpg.io/v1\nkind: Cluster\nmetadata:\n  name: my-postgres-db\n  namespace: databases\nspec:\n  instances: 3\n  storage:\n    size: 50Gi\n  postgresql:\n    parameters:\n      max_connections: "250"\n      shared_buffers: "2GB"`,
-  redis: `apiVersion: redis.redis.opstreelabs.in/v1beta1\nkind: Redis\nmetadata:\n  name: my-redis-cache\n  namespace: databases\nspec:\n  kubernetesConfig:\n    image: redis:7.2\n  redisExporter:\n    enabled: true`,
-  clickhouse: `apiVersion: clickhouse.altinity.com/v1\nkind: ClickHouseInstallation\nmetadata:\n  name: my-clickhouse-analytics\n  namespace: databases\nspec:\n  configuration:\n    clusters:\n      - name: "prod-cluster"\n        layout:\n          shardsCount: 2\n          replicasCount: 2`,
-  mongodb: `apiVersion: mongodbcommunity.mongodb.com/v1\nkind: MongoDBCommunity\nmetadata:\n  name: my-mongodb-cluster\n  namespace: databases\nspec:\n  members: 3\n  type: ReplicaSet\n  version: "7.0.5"`
-};
-
 export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> = ({
   initialEngineType = 'postgresql',
   onSuccess
@@ -197,11 +189,8 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
   const [helmActionStatus, setHelmActionStatus] = useState<string>('');
   const [isExecutingHelmAction, setIsExecutingHelmAction] = useState<boolean>(false);
 
-  // CRD Manifest content & Namespace for Operator Service (Mode 2)
-  const [crdManifestContent, setCrdManifestContent] = useState<string>(
-    DEFAULT_CRD_MANIFESTS[selectedEngine.engine_type] || DEFAULT_CRD_MANIFESTS['postgresql']
-  );
-  const [crdNamespace, setCrdNamespace] = useState<string>('default (specified in manifest)');
+  // CRD Manifest content for Operator Service (Mode 2) - starts completely blank
+  const [crdManifestContent, setCrdManifestContent] = useState<string>('');
   const [showSavedChartsModal, setShowSavedChartsModal] = useState<boolean>(false);
 
   const [isDeploying, setIsDeploying] = useState(false);
@@ -404,7 +393,7 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
         await apiClient.applyOperatorManifest({
           cluster_name: targetClusterName,
           resource_name: dbName,
-          target_namespace: crdNamespace.includes('default') ? 'databases' : crdNamespace,
+          target_namespace: 'databases',
           content: crdManifestContent
         });
       } else {
@@ -1029,7 +1018,7 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
 
             {/* RESOURCE NAME, NAMESPACE & CASCADING CLUSTER SELECTION */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Resource Name & Target Namespace */}
+              {/* Resource Name */}
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
@@ -1044,20 +1033,6 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
                     className="w-full bg-bg-main border border-accent-darkBorder text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-sky/40 focus:border-brand-sky font-semibold"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">Custom Resource metadata.name</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                    Target Namespace
-                  </label>
-                  <input
-                    type="text"
-                    value={crdNamespace}
-                    onChange={(e) => setCrdNamespace(e.target.value)}
-                    placeholder="default (specified in manifest)"
-                    className="w-full bg-bg-main border border-accent-darkBorder text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-sky/40 focus:border-brand-sky font-semibold"
-                  />
-                  <span className="text-[11px] text-slate-500 mt-1 block">Kubernetes namespace (default specified in manifest)</span>
                 </div>
               </div>
 
@@ -1116,7 +1091,7 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
               <YamlCodeEditor
                 value={crdManifestContent}
                 onChange={setCrdManifestContent}
-                placeholder="apiVersion: postgresql.cnpg.io/v1\nkind: Cluster..."
+                placeholder=""
                 minHeight="320px"
               />
             </div>

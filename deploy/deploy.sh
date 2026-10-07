@@ -1,28 +1,6 @@
 #!/bin/bash
 set -e
 
-DISK_DEV="/dev/xvdf"
-MOUNT_POINT="/mnt"
- 
-if [ -b "$DISK_DEV" ]; then
-
-    if ! sudo blkid "$DISK_DEV" > /dev/null 2>&1; then
-        echo "⚡ Disk $DISK_DEV is not formatted. Creating ext4 filesystem..."
-        sudo mkfs.ext4 -F "$DISK_DEV"
-    else
-        echo "✓ Filesystem on $DISK_DEV already exists."
-    fi
- 
-    sudo mkdir -p "$MOUNT_POINT"
-    if ! mountpoint -q "$MOUNT_POINT"; then
-        echo "📦 Mounting $DISK_DEV to $MOUNT_POINT..."
-        sudo mount "$DISK_DEV" "$MOUNT_POINT"
-    else
-        echo "✓ $MOUNT_POINT is already mounted."
-    fi
-else
-    echo "⚠️ Warning: Device $DISK_DEV not found. Using local filesystem."
-fi
 
 echo "📁 Creating directories..."
 sudo mkdir -p /mnt/main-data/postgres_data
@@ -279,22 +257,22 @@ services:
     networks:
       - idp-network
 
-  #monitoring-service:
-    #image: ${DOCKERHUB_USERNAME}/monitoring-service:latest
-    #container_name: idp-monitoring-service
-    #restart: unless-stopped
-    #ports:
-      #- "8009:8001"
-    #depends_on:
-      #postgres:
-        #condition: service_started
-    #healthcheck:
-      #test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      #interval: 30s
-      #timeout: 5s
-      #retries: 3
-    #networks:
-      #- idp-network
+  monitoring-service:
+    image: ${DOCKERHUB_USERNAME}/monitoring-service:latest
+    container_name: idp-monitoring-service
+    restart: unless-stopped
+    ports:
+      - "8009:8001"
+    depends_on:
+      postgres:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idp-network
 
 
   ui:

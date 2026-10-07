@@ -32,6 +32,7 @@ import {
   FolderTree,
   FileCode2,
   RefreshCw,
+  RotateCcw,
   Search,
   DollarSign,
   Cloud,
@@ -218,6 +219,7 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
   const [yamlConfigStatus, setYamlConfigStatus] = useState<'idle' | 'applying' | 'success' | 'error'>('idle');
   const [yamlConfigNotification, setYamlConfigNotification] = useState<string | null>(null);
   const [isUninstallingRelease, setIsUninstallingRelease] = useState<boolean>(false);
+  const [isRestartingContainers, setIsRestartingContainers] = useState<boolean>(false);
 
   // Custom File Management State
   const [activeYamlFileName, setActiveYamlFileName] = useState<string>('');
@@ -434,6 +436,40 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
       setTimeout(() => setYamlConfigNotification(null), 6000);
     } finally {
       setIsUninstallingRelease(false);
+    }
+  };
+
+  const handleRestartContainers = async () => {
+    const releaseName = selectedInstance?.name || item.name || 'my-db';
+    const clusterName = selectedInstance?.cluster_name || 'test-eks';
+    const namespace = selectedInstance?.namespace || 'databases';
+    const chartName = (selectedInstance?.engine_type || item.engine_type || 'postgresql').toLowerCase();
+
+    const confirmed = window.confirm(
+      `Are you sure you want to trigger a rolling restart of containers for release "${releaseName}" on cluster "${clusterName}" (namespace: ${namespace})?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsRestartingContainers(true);
+      setYamlConfigNotification(`[Restart Containers]: Dispatching rolling container restart for "${releaseName}" on cluster "${clusterName}"...`);
+
+      await apiClient.applyHelmRelease({
+        cluster_name: clusterName,
+        release_name: releaseName,
+        chart_name: chartName,
+        namespace: namespace,
+        target_values_file: activeYamlFileName || undefined,
+        chart_content: customValuesYaml || undefined
+      });
+
+      setYamlConfigNotification(`✓ Rolling container restart initiated for release "${releaseName}"! Pods are rolling out.`);
+      setTimeout(() => setYamlConfigNotification(null), 5000);
+    } catch (err: any) {
+      setYamlConfigNotification(`[Error]: Failed to restart containers: ${err.message}`);
+      setTimeout(() => setYamlConfigNotification(null), 6000);
+    } finally {
+      setIsRestartingContainers(false);
     }
   };
 
@@ -1034,6 +1070,21 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
             >
               <CheckCircle className="w-3.5 h-3.5 text-brand-cyan" />
               <span>template</span>
+            </button>
+
+            <button
+              onClick={handleRestartContainers}
+              disabled={isRestartingContainers}
+              className={`px-3.5 py-2 rounded-xl font-extrabold text-xs shadow-md transition-all flex items-center gap-1.5 border ${
+                isRestartingContainers
+                  ? 'bg-amber-950/60 border-amber-500/40 text-amber-300 cursor-wait'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-100 border-amber-500/30 hover:border-amber-500/50 shadow-amber-500/10'
+              }`}
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRestartingContainers ? 'animate-spin' : 'text-amber-400'}`} />
+              <span>
+                {isRestartingContainers ? 'Restarting...' : 'restart containers'}
+              </span>
             </button>
 
             <button
