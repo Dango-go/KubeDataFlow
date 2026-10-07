@@ -5,6 +5,7 @@ from core.database import engine, Base, AsyncSessionLocal
 from seeders.initial_catalog import seed_catalog
 from api.v1.endpoints.catalog import router as catalog_router
 from api.v1.endpoints.admin import router as admin_router
+from api.v1.endpoints.update import router as update_router
 
 
 @asynccontextmanager
@@ -29,6 +30,7 @@ app = FastAPI(
 
 app.include_router(catalog_router)
 app.include_router(admin_router)
+app.include_router(update_router)
 
 
 @app.get("/health")

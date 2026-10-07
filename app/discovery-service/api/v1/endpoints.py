@@ -23,13 +23,12 @@ async def discover_clusters(
         raise HTTPException(status_code=400, detail=f"Discovery failed: {str(e)}")
 
 
-@router.get("/clusters/{user_id}", response_model=List[ClusterResponse])
-async def get_user_clusters(
-    user_id: int,
+@router.get("/clusters", response_model=List[ClusterResponse])
+async def get_all_clusters(
     db: AsyncSession = Depends(db_session)
 ):
     scanner = ClusterScannerService(db=db)
-    return await scanner.get_clusters_by_user(user_id)
+    return await scanner.get_clusters()
 
 # GET one cluster by name 
 @router.get("/cluster/{cluster_name}", response_model=ClusterResponse)

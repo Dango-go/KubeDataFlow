@@ -128,6 +128,17 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
     setFailedImages((prev) => ({ ...prev, [id]: true }));
   };
 
+  const getStatusColor = (status: string) => {
+    const s = (status || '').toLowerCase();
+    if (s.includes('running') || s === 'ready' || s === 'created') {
+      return 'bg-emerald-950/60 text-emerald-400 border-emerald-500/30';
+    }
+    if (s.includes('pending') || s.includes('creating')) {
+      return 'bg-amber-950/60 text-amber-400 border-amber-500/30';
+    }
+    return 'bg-rose-950/60 text-rose-400 border-rose-500/30';
+  };
+
   const categories: { id: CategoryType; label: string; count: number }[] = [
     { id: 'relational', label: 'Relational Databases', count: 4 },
     { id: 'nosql', label: 'NoSQL / Non-Relational Databases', count: 4 },
@@ -223,7 +234,7 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
                 <div>
                   <h4 className="text-lg font-bold text-white flex items-center gap-2">
                     {selectedDb.name}
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${getStatusColor(selectedDb.status)}`}>
                       ● {(isCrdResource(selectedDb) ? 'created' : selectedDb.status).toUpperCase()}
                     </span>
                   </h4>
@@ -370,7 +381,7 @@ export const DatabasesCatalogPage: React.FC<DatabasesCatalogPageProps> = ({
                       </td>
                       <td className="p-4 text-slate-400 text-xs font-mono">{db.cluster_name}</td>
                       <td className="p-4">
-                        <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full border ${getStatusColor(db.status)}`}>
                           ● {isCrdResource(db) ? 'created' : db.status}
                         </span>
                       </td>

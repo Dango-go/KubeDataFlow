@@ -45,6 +45,10 @@ export default defineConfig({
         target: 'http://localhost:8008',
         changeOrigin: true,
       },
+      '/api/v1/info': {
+        target: 'http://localhost:8008',
+        changeOrigin: true,
+      },
       '/api/v1/provider': {
         target: 'http://localhost:8009',
         changeOrigin: true,

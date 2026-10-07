@@ -144,6 +144,10 @@ class ClusterScannerService:
 
         return saved_entities
 
+    async def get_clusters(self) -> List[ClusterEntity]:
+        result = await self.db.execute(select(ClusterEntity))
+        return result.scalars().all()
+
     async def get_clusters_by_user(self, user_id: int) -> List[ClusterEntity]:
         result = await self.db.execute(
             select(ClusterEntity).where(ClusterEntity.user_id == user_id)

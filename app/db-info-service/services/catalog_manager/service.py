@@ -41,8 +41,31 @@ class CatalogService:
         }
 
     async def get_status_of_releases(self):
-        PROVISIONING_URL = os.getenv("PROVISIONING_SERVICE_URL", "http://provisioner-service:8002")
+        """Get status of all database releases from DB and k8s clusters"""
         DISCOVERY_URL = os.getenv("DISCOVERY_SERVICE_URL", "http://discovery-service:8001")
+
+        with httpx.Client() as client:
+            try:
+                resp = client.get(f"{DISCOVERY_URL}/api/v1/discovery/clusters")
+                if resp.status_code != 200:
+                    return []
+                clusters = resp.json()
+            except httpx.RequestException as e:
+                return {"Can't get info about clusters": str(e)}
+
+            if not clusters:
+                return []
+
+            clusters_map = {
+                c.get("cluster_name"): {
+                    "endpoint": c.get("endpoint"),
+                    "token": c.get("token")
+                }
+                for c in clusters
+            }
+
+        
+        PROVISIONING_URL = os.getenv("PROVISIONING_SERVICE_URL", "http://provisioner-service:8002")
         with httpx.Client() as client:
             try:
                 resp = client.get(f"{PROVISIONING_URL}/api/v1/provisioning")
@@ -54,34 +77,78 @@ class CatalogService:
 
             if not databases:
                 return []
+            
+            results = []
 
             for db in databases:
                 release_name = db.get("name")
                 cluster_name = db.get("cluster_name")
                 namespace = db.get("namespace")
-                current_status = db.get("status", "Running")
-                cpu = db.get("cpu")
-                ram = db.get("ram")
-                disk = db.get("disk")
-                status= db.get("status")
-                created_at = db.get("created_at")
-                monthly_cost = db.get("monthly_cost")
 
-        with httpx.Client() as client:
-            try:
-                resp = client.get(f"{DISCOVERY_URL}/api/v1/discovery")
-                if resp.status_code != 200:
-                    return []
-                clusters = resp.json()
-            except httpx.RequestException as e:
-                return {"error": str(e)}
+                cluster_info = clusters_map.get(cluster_name)
 
-            if not clusters:
-                return []
+                if not cluster_info:
+                    db["live_status"] = "Cluster Not Found"
 
-            for cluster in clusters:
-                cluster_name = cluster.get("cluster_name")
-                
+                    results.append(db)
+                    continue
+
+                api_server_url = cluster_info.get("endpoint")
+                token = cluster_info.get("token")
+
+                try:
+                    headers = {"Authorization": f"Bearer {token}"}
+                    pods_url = f"{api_server_url}/api/v1/namespaces/{namespace}/pods"
+                    resp = client.get(
+                        pods_url,
+                        params={"labelSelector": f"app.kubernetes.io/instance={release_name}"},
+                        headers=headers,
+                        verify=False,   
+                        timeout=5.0
+                    )
+
+                    if resp.status_code == 200:
+                        pods_data = resp.json().get("items", [])
+                        if pods_data:
+                            status = pods_data[0].get("status", {}).get("phase")
+                            db["live_status"] = status
+
+                            first_pod = pods_data[0]
+                            pod_status = first_pod.get("status") or {}
+                            status = pod_status.get("phase", "Unknown")
+                            container_statuses = pod_status.get("containerStatuses") or []
+                            
+                            if container_statuses:
+                                waiting = container_statuses[0].get("state", {}).get("waiting")
+                                if waiting and waiting.get("reason"):
+                                    status = waiting.get("reason")
+
+                            db["live_status"] = status
+                        
+                        else:
+                            db["live_status"] = "No Pods found in existing k8s cluster"
+
+
+                    else:
+                        db["live_status"] = "No connection to k8s cluster"
+
+                except Exception as e:
+                    db["live_status"] = "Unreachable"
+
+                results.append(db)
+
+        return results
+
+
+                    
+
+
+
+
+            
+ 
+
+
 
             
 

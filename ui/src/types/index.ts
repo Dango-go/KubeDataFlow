@@ -17,7 +17,7 @@ export interface DeployedDatabase {
   name: string;
   engine_type: string;
   version: string;
-  status: 'running' | 'creating' | 'stopped' | 'failed';
+  status: 'running' | 'creating' | 'stopped' | 'failed' | string;
   cluster_name: string;
   namespace: string;
   cpu_usage_m: number;

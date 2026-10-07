@@ -18,13 +18,12 @@ async def update_clusters(
     return await None
 
 # GET status of reliases
-@router.post("/status_of_releases")
+@router.get("/status_of_releases")
 async def status_of_releases(
     db: AsyncSession = Depends(get_db),
 ):
     service = CatalogService(db)
-    result = service.get_status_of_releases()
-    return await None
+    return await service.get_status_of_releases()
 
 
 # GET /api/v1/info/pods_status/{release}

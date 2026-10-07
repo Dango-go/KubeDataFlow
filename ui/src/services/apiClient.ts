@@ -22,9 +22,15 @@ class ApiClient {
 
     try {
       const token = localStorage.getItem('access_token');
-      const res = await fetch('/api/v1/provisioning', {
+      // Fetch live releases status from db-info-service, fallback to provisioning if unavailable
+      let res = await fetch('/api/v1/info/status_of_releases', {
         headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
       });
+      if (!res.ok) {
+        res = await fetch('/api/v1/provisioning', {
+          headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+        });
+      }
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -33,7 +39,7 @@ class ApiClient {
             name: item.name,
             engine_type: item.engine_type,
             version: item.version,
-            status: item.status?.toLowerCase() || 'running',
+            status: item.live_status || item.status || 'running',
             cluster_name: item.cluster_name,
             namespace: item.namespace || 'databases',
             cpu_usage_m: Math.round((item.cpu || 1) * 1000),
@@ -57,7 +63,7 @@ class ApiClient {
         }
       }
     } catch (e) {
-      console.warn('Failed to fetch deployed databases from db-provisioning-service:', e);
+      console.warn('Failed to fetch deployed databases:', e);
     }
 
     if (localSaved.length > 0) {
