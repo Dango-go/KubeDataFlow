@@ -428,7 +428,8 @@ export const CreateDatabaseWizardPage: React.FC<CreateDatabaseWizardPageProps> =
           token: curCluster?.token,
           user_name: curCluster?.user_name,
           namespace: 'databases',
-          target_values_file: targetFile
+          target_values_file: targetFile,
+          chart_content: yamlContent
         });
       }
 

@@ -400,6 +400,7 @@ class ApiClient {
     user_name?: string;
     namespace?: string;
     target_values_file?: string;
+    chart_content?: string;
   }): Promise<any> {
     const token = localStorage.getItem('access_token');
     const res = await fetch('/api/v1/helm/apply', {
@@ -417,7 +418,8 @@ class ApiClient {
         token: payload.token || '',
         user_name: payload.user_name || 'cluster-admin',
         namespace: payload.namespace || 'databases',
-        target_values_file: payload.target_values_file
+        target_values_file: payload.target_values_file,
+        chart_content: payload.chart_content
       })
     });
     if (!res.ok) {

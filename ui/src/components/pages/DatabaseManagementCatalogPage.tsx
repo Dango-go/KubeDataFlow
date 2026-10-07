@@ -387,7 +387,8 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
         release_name: releaseName,
         chart_name: chartName,
         namespace: namespace,
-        target_values_file: fileName || undefined
+        target_values_file: fileName || undefined,
+        chart_content: customValuesYaml || undefined
       });
 
       setYamlConfigStatus('success');

@@ -63,12 +63,26 @@ class HelmService:
         if file_path.endswith(".yaml") or file_path.endswith(".yml"):
             self.validator.validate_yaml_content(content)
 
-        # SAVE FILE
-        return await self.chart_manager.save_chart_file(
+        # SAVE FILE on disk
+        saved_file = await self.chart_manager.save_chart_file(
             release_name=release_name,
             file_path=file_path,
             content=content
         )
+
+        # Also persist to database if helm_charts row exists
+        if self.db_session:
+            stmt = select(HelmChartDB).where(HelmChartDB.release_name == release_name)
+            res = await self.db_session.execute(stmt)
+            charts = res.scalars().all()
+            for chart in charts:
+                updated_files = dict(chart.custom_yaml_files or {})
+                updated_files[file_path] = content
+                chart.custom_yaml_files = updated_files
+            if charts:
+                await self.db_session.commit()
+
+        return saved_file
 
     # CREATE CUSTOM FILE (e.g. custom-values.yaml)
     async def create_custom_file(self, release_name: str, file_name: str, content: str) -> str:
@@ -78,7 +92,7 @@ class HelmService:
 
         self.validator.validate_yaml_content(content)
 
-        return await self.chart_manager.save_chart_file(
+        return await self.save_chart_file(
             release_name=release_name,
             file_path=file_name,
             content=content
@@ -177,6 +191,15 @@ class HelmService:
                 wait=False
             )
 
+            # Read effective yaml content from file if not provided explicitly
+            effective_target_file = target_values_file or "values.yaml"
+            effective_content = chart_content
+            if not effective_content and values_file_path and Path(values_file_path).exists():
+                try:
+                    effective_content = Path(values_file_path).read_text(encoding="utf-8")
+                except Exception:
+                    pass
+
             # saving to database
             if self.db_session:
                 request = select(HelmChartDB).where(
@@ -187,12 +210,12 @@ class HelmService:
                 chart = res.scalar_one_or_none()
 
                 if chart:
-                    if target_values_file and chart_content:
+                    if effective_target_file and effective_content:
                         updated_files = dict(chart.custom_yaml_files or {})
-                        updated_files[target_values_file] = chart_content
+                        updated_files[effective_target_file] = effective_content
                         chart.custom_yaml_files = updated_files
                 else:
-                    custom_files = {target_values_file: chart_content} if target_values_file and chart_content else {}
+                    custom_files = {effective_target_file: effective_content} if effective_target_file and effective_content else {}
                     new_chart = HelmChartDB(
                         provider_name=provider_type,
                         cluster_name=cluster_name,
