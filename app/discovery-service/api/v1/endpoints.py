@@ -31,7 +31,7 @@ async def get_user_clusters(
     scanner = ClusterScannerService(db=db)
     return await scanner.get_clusters_by_user(user_id)
 
-
+# GET one cluster by name 
 @router.get("/cluster/{cluster_name}", response_model=ClusterResponse)
 async def get_cluster_by_name(
     cluster_name: str,

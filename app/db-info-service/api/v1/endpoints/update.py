@@ -17,10 +17,21 @@ async def update_clusters(
     service = CatalogService(db)
     return await None
 
-# GET pods of reliase
-@router.post("/pods_list")
-async def pods_list(
-    db: AsyncSession = Depends(get_db)
+# GET status of reliases
+@router.post("/status_of_releases")
+async def status_of_releases(
+    db: AsyncSession = Depends(get_db),
+):
+    service = CatalogService(db)
+    result = service.get_status_of_releases()
+    return await None
+
+
+# GET /api/v1/info/pods_status/{release}
+@router.get("/pods_status/{release}")
+async def get_pods_status_from_reliase(
+    db: AsyncSession = Depends(get_db),
+    
 ):
     service = CatalogService(db)
     return await None

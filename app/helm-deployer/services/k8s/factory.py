@@ -2,7 +2,7 @@ import logging
 from kubernetes_asyncio import client, config
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
-from db.models.models import ClusterDB
+from db.models.models import HelmChartDB
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class K8sClientFactory:
     @classmethod
     def create_from_cluster_entity(
         cls,
-        cluster: ClusterDB,  # cluster object 
+        cluster: HelmChartDB,  # cluster object 
         verify_ssl: bool = False,
     ) -> client.ApiClient:
  
