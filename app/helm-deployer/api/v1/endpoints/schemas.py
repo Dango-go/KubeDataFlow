@@ -80,5 +80,7 @@ class UninstallRequest(BaseModel):
     token: Optional[str] = None
     user_name: str = "cluster-admin"
     namespace: str = "default"
+    mode: Optional[str] = "full"
+    delete_pvcs: Optional[bool] = False
 
 

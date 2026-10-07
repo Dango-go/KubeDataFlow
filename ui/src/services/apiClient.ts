@@ -433,6 +433,8 @@ class ApiClient {
     cluster_name: string;
     release_name: string;
     namespace?: string;
+    mode?: 'full' | 'orphan' | 'pods';
+    delete_pvcs?: boolean;
   }): Promise<any> {
     const token = localStorage.getItem('access_token');
     const res = await fetch('/api/v1/helm/uninstall', {
@@ -444,7 +446,9 @@ class ApiClient {
       body: JSON.stringify({
         cluster_name: payload.cluster_name,
         release_name: payload.release_name,
-        namespace: payload.namespace || 'databases'
+        namespace: payload.namespace || 'databases',
+        mode: payload.mode || 'full',
+        delete_pvcs: payload.delete_pvcs || false
       })
     });
     if (!res.ok) {

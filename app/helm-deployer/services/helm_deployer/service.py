@@ -12,6 +12,8 @@ from services.helm_deployer.runner import HelmRunner
 import httpx
 import os
 from fastapi import HTTPException
+from kubernetes_asyncio import client
+from services.k8s.factory import K8sClientFactory
 
 
 
@@ -250,6 +252,8 @@ class HelmService:
         token: Optional[str] = None,
         user_name: str = "cluster-admin",
         namespace: str = "default",
+        mode: str = "full",
+        delete_pvcs: bool = False
     ):
         self.validator.validate_release_name(release_name)
         self.validator.validate_namespace(namespace)
@@ -268,6 +272,67 @@ class HelmService:
                 except Exception as e:
                     print(f"Failed to fetch cluster details from discovery: {e}")
 
+        # 1. Mode: 'orphan' -> Delete StatefulSets & Deployments without deleting pods (--cascade=orphan)
+        if mode == "orphan":
+            deleted_items = []
+            try:
+                async with K8sClientFactory.create_client(
+                    api_server_url=api_server_url,
+                    auth_token=token,
+                    verify_ssl=False
+                ) as net_client:
+                    apps_api = client.AppsV1Api(net_client)
+                    # Delete StatefulSets with propagation_policy='Orphan'
+                    sts_list = await apps_api.list_namespaced_stateful_set(
+                        namespace=namespace,
+                        label_selector=f"app.kubernetes.io/instance={release_name}"
+                    )
+                    for sts in sts_list.items:
+                        await apps_api.delete_namespaced_stateful_set(
+                            name=sts.metadata.name,
+                            namespace=namespace,
+                            propagation_policy="Orphan"
+                        )
+                        deleted_items.append(f"StatefulSet/{sts.metadata.name}")
+
+                    # Delete Deployments with propagation_policy='Orphan'
+                    dep_list = await apps_api.list_namespaced_deployment(
+                        namespace=namespace,
+                        label_selector=f"app.kubernetes.io/instance={release_name}"
+                    )
+                    for dep in dep_list.items:
+                        await apps_api.delete_namespaced_deployment(
+                            name=dep.metadata.name,
+                            namespace=namespace,
+                            propagation_policy="Orphan"
+                        )
+                        deleted_items.append(f"Deployment/{dep.metadata.name}")
+            except Exception as e:
+                print(f"Error executing orphan teardown: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to execute orphan teardown: {str(e)}")
+
+            return f"Successfully deleted controllers ({', '.join(deleted_items) or release_name}) with --cascade=orphan. Pods and storage remain alive."
+
+        # 2. Mode: 'pods' -> Purge/delete pods only to trigger fresh restart
+        elif mode == "pods":
+            try:
+                async with K8sClientFactory.create_client(
+                    api_server_url=api_server_url,
+                    auth_token=token,
+                    verify_ssl=False
+                ) as net_client:
+                    core_api = client.CoreV1Api(net_client)
+                    await core_api.delete_collection_namespaced_pod(
+                        namespace=namespace,
+                        label_selector=f"app.kubernetes.io/instance={release_name}"
+                    )
+            except Exception as e:
+                print(f"Error purging pods: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to purge pods: {str(e)}")
+
+            return f"Successfully purged/deleted all pods for release '{release_name}' in namespace '{namespace}'."
+
+        # 3. Mode: 'full' (Default) -> Helm uninstall + optional PVC delete
         kubeconfig_path = await self.kubeconfig_builder.fast_creating(
             cluster_name=cluster_name,
             release_name=release_name,
@@ -284,6 +349,21 @@ class HelmService:
                 kubeconfig_path=str(kubeconfig_path),
                 namespace=namespace
             )
+
+            if delete_pvcs:
+                try:
+                    async with K8sClientFactory.create_client(
+                        api_server_url=api_server_url,
+                        auth_token=token,
+                        verify_ssl=False
+                    ) as net_client:
+                        core_api = client.CoreV1Api(net_client)
+                        await core_api.delete_collection_namespaced_persistent_volume_claim(
+                            namespace=namespace,
+                            label_selector=f"app.kubernetes.io/instance={release_name}"
+                        )
+                except Exception as pe:
+                    print(f"Error deleting PVCs during uninstall: {pe}")
 
             release_dir = self.chart_manager.base_temp_dir / release_name
             if release_dir.exists():

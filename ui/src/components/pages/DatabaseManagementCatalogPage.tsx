@@ -36,7 +36,9 @@ import {
   Search,
   DollarSign,
   Cloud,
-  Trash2
+  Trash2,
+  ChevronDown,
+  AlertTriangle
 } from 'lucide-react';
 
 interface DatabaseManagementCatalogPageProps {
@@ -220,6 +222,9 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
   const [yamlConfigNotification, setYamlConfigNotification] = useState<string | null>(null);
   const [isUninstallingRelease, setIsUninstallingRelease] = useState<boolean>(false);
   const [isRestartingContainers, setIsRestartingContainers] = useState<boolean>(false);
+  const [showUninstallModal, setShowUninstallModal] = useState<boolean>(false);
+  const [uninstallMode, setUninstallMode] = useState<'full' | 'orphan' | 'pods'>('full');
+  const [uninstallDeletePvcs, setUninstallDeletePvcs] = useState<boolean>(false);
 
   // Custom File Management State
   const [activeYamlFileName, setActiveYamlFileName] = useState<string>('');
@@ -411,29 +416,35 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
     }
   };
 
-  const handleUninstallRelease = async () => {
+  const handleExecuteUninstall = async () => {
     const releaseName = selectedInstance?.name || item.name || 'my-db';
     const clusterName = selectedInstance?.cluster_name || 'test-eks';
     const namespace = selectedInstance?.namespace || 'databases';
 
-    const confirmed = window.confirm(
-      `Are you sure you want to uninstall Helm release "${releaseName}" from cluster "${clusterName}" (namespace: ${namespace})?`
-    );
-    if (!confirmed) return;
-
     try {
       setIsUninstallingRelease(true);
-      setYamlConfigNotification(`[Helm Uninstall]: Uninstalling release "${releaseName}" on cluster "${clusterName}"...`);
-      await apiClient.uninstallHelmRelease({
+      setShowUninstallModal(false);
+
+      const modeLabels: Record<string, string> = {
+        full: 'Complete Helm Release Uninstall',
+        orphan: 'Orphan Teardown (--cascade=orphan)',
+        pods: 'Purge Pods Only'
+      };
+      setYamlConfigNotification(`[Teardown]: Executing ${modeLabels[uninstallMode]} for "${releaseName}" on cluster "${clusterName}"...`);
+
+      const result = await apiClient.uninstallHelmRelease({
         cluster_name: clusterName,
         release_name: releaseName,
-        namespace: namespace
+        namespace: namespace,
+        mode: uninstallMode,
+        delete_pvcs: uninstallDeletePvcs
       });
-      setYamlConfigNotification(`✓ Release "${releaseName}" uninstalled successfully from cluster "${clusterName}"!`);
-      setTimeout(() => setYamlConfigNotification(null), 5000);
-    } catch (err: any) {
-      setYamlConfigNotification(`[Error]: Helm uninstall failed: ${err.message}`);
+
+      setYamlConfigNotification(`✓ ${result.message || `Teardown operation completed for "${releaseName}"`}!`);
       setTimeout(() => setYamlConfigNotification(null), 6000);
+    } catch (err: any) {
+      setYamlConfigNotification(`[Error]: Teardown failed: ${err.message}`);
+      setTimeout(() => setYamlConfigNotification(null), 7000);
     } finally {
       setIsUninstallingRelease(false);
     }
@@ -1103,7 +1114,7 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
             </button>
 
             <button
-              onClick={handleUninstallRelease}
+              onClick={() => setShowUninstallModal(true)}
               disabled={isUninstallingRelease}
               className={`px-4 py-2 rounded-xl font-extrabold text-xs shadow-lg transition-all flex items-center gap-1.5 border ${
                 isUninstallingRelease
@@ -1113,7 +1124,7 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
             >
               <Trash2 className={`w-3.5 h-3.5 ${isUninstallingRelease ? 'animate-spin' : 'text-rose-400'}`} />
               <span>
-                {isUninstallingRelease ? 'Uninstalling...' : 'uninstall release'}
+                {isUninstallingRelease ? 'Uninstalling...' : 'Uninstall ▾'}
               </span>
             </button>
           </div>
@@ -1717,6 +1728,205 @@ export const DatabaseManagementCatalogPage: React.FC<DatabaseManagementCatalogPa
                 className="text-xs font-semibold px-4 py-2 rounded-xl border border-accent-darkBorder text-slate-400 hover:bg-accent-darkHover transition-all"
               >
                 Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 🛑 UNINSTALL & TEARDOWN OPTIONS MODAL */}
+      {/* ======================================================== */}
+      {showUninstallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-bg-card border border-rose-500/30 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 relative">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-accent-darkBorder pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    Uninstall & Teardown Options
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      {selectedInstance?.name || item.name}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Cluster: <span className="text-slate-200 font-mono">{selectedInstance?.cluster_name || 'test-eks'}</span> • Namespace: <span className="text-slate-200 font-mono">{selectedInstance?.namespace || 'databases'}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowUninstallModal(false)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-bg-main transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Teardown Modes Selection */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Select Teardown Mode
+              </label>
+
+              {/* Mode 1: Complete Helm Release Uninstall */}
+              <div
+                onClick={() => setUninstallMode('full')}
+                className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+                  uninstallMode === 'full'
+                    ? 'bg-rose-950/40 border-rose-500/60 shadow-lg shadow-rose-950/30 ring-1 ring-rose-500/40'
+                    : 'bg-bg-main border-accent-darkBorder hover:border-slate-700'
+                }`}
+              >
+                <div className="pt-0.5">
+                  <input
+                    type="radio"
+                    name="uninstallMode"
+                    checked={uninstallMode === 'full'}
+                    onChange={() => setUninstallMode('full')}
+                    className="accent-rose-500 w-4 h-4 cursor-pointer"
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <span className="text-rose-400">🔴</span> Complete Helm Release Uninstall
+                    </span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      Standard
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Completely uninstalls the Helm release, StatefulSet/Deployment, services, and configuration maps from the cluster.
+                  </p>
+
+                  {/* Optional PVC delete checkbox under full uninstall */}
+                  {uninstallMode === 'full' && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-3 pt-3 border-t border-rose-500/20 flex items-start gap-2.5 bg-rose-950/60 p-2.5 rounded-lg border border-rose-500/30"
+                    >
+                      <input
+                        type="checkbox"
+                        id="deletePvcsCheck"
+                        checked={uninstallDeletePvcs}
+                        onChange={(e) => setUninstallDeletePvcs(e.target.checked)}
+                        className="accent-rose-500 w-4 h-4 rounded mt-0.5 cursor-pointer"
+                      />
+                      <label htmlFor="deletePvcsCheck" className="text-[11px] text-rose-200 cursor-pointer">
+                        <strong className="block text-rose-300 font-bold mb-0.5">Delete Persistent Volumes (PVC) in Cloud</strong>
+                        Permanently deletes cloud disks (EBS/PV). By default, Kubernetes preserves PVCs to protect data.
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Mode 2: Orphan Teardown (--cascade=orphan) */}
+              <div
+                onClick={() => setUninstallMode('orphan')}
+                className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+                  uninstallMode === 'orphan'
+                    ? 'bg-amber-950/40 border-amber-500/60 shadow-lg shadow-amber-950/30 ring-1 ring-amber-500/40'
+                    : 'bg-bg-main border-accent-darkBorder hover:border-slate-700'
+                }`}
+              >
+                <div className="pt-0.5">
+                  <input
+                    type="radio"
+                    name="uninstallMode"
+                    checked={uninstallMode === 'orphan'}
+                    onChange={() => setUninstallMode('orphan')}
+                    className="accent-amber-500 w-4 h-4 cursor-pointer"
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <span className="text-amber-400">🟡</span> Orphan Teardown (<code className="text-amber-300 text-[11px]">--cascade=orphan</code>)
+                    </span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Zero Downtime
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Deletes the StatefulSet / Deployment controller only. <strong>Pods, storage, and database remain running without downtime.</strong> Use this to safely fix immutable spec errors (e.g. Forbidden) before upgrading.
+                  </p>
+                </div>
+              </div>
+
+              {/* Mode 3: Purge Pods Only */}
+              <div
+                onClick={() => setUninstallMode('pods')}
+                className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+                  uninstallMode === 'pods'
+                    ? 'bg-blue-950/40 border-blue-500/60 shadow-lg shadow-blue-950/30 ring-1 ring-blue-500/40'
+                    : 'bg-bg-main border-accent-darkBorder hover:border-slate-700'
+                }`}
+              >
+                <div className="pt-0.5">
+                  <input
+                    type="radio"
+                    name="uninstallMode"
+                    checked={uninstallMode === 'pods'}
+                    onChange={() => setUninstallMode('pods')}
+                    className="accent-blue-500 w-4 h-4 cursor-pointer"
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <span className="text-blue-400">⚪</span> Purge Pods Only
+                    </span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      Pod Recycle
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Forcefully terminates running pods so the Kubernetes controller recreates clean pod instances while keeping all Helm and StatefulSet configurations intact.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between border-t border-accent-darkBorder pt-4">
+              <button
+                type="button"
+                onClick={() => setShowUninstallModal(false)}
+                className="text-xs font-semibold px-4 py-2.5 rounded-xl border border-accent-darkBorder text-slate-400 hover:bg-accent-darkHover transition-all"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteUninstall}
+                disabled={isUninstallingRelease}
+                className={`font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-lg flex items-center gap-2 transition-all ${
+                  uninstallMode === 'orphan'
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                    : uninstallMode === 'pods'
+                    ? 'bg-blue-500 hover:bg-blue-400 text-white shadow-blue-500/20'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+                }`}
+              >
+                <Trash2 className={`w-4 h-4 ${isUninstallingRelease ? 'animate-spin' : ''}`} />
+                <span>
+                  {isUninstallingRelease
+                    ? 'Executing...'
+                    : uninstallMode === 'orphan'
+                    ? 'Execute Orphan Teardown'
+                    : uninstallMode === 'pods'
+                    ? 'Purge Pods'
+                    : 'Uninstall Release'}
+                </span>
               </button>
             </div>
 

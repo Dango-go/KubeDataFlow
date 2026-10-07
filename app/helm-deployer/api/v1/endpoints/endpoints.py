@@ -154,12 +154,14 @@ async def uninstall_chart(
         api_server_url=request.api_server_url,
         token=request.token,
         user_name=request.user_name,
-        namespace=request.namespace
+        namespace=request.namespace,
+        mode=request.mode or "full",
+        delete_pvcs=bool(request.delete_pvcs)
     )
 
     return {
         "status": "success",
-        "message": f"Release '{request.release_name}' uninstalled successfully",
+        "message": f"Release '{request.release_name}' ({request.mode or 'full'}) processed successfully",
         "release_name": request.release_name,
         "output": result
     }
